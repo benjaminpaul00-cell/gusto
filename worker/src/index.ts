@@ -219,7 +219,7 @@ export default {
     // Photos en même temps que le reste (une partie du budget leur est réservée).
     const budget = Number(env.JOB_BUDGET) || 40;
     const parallel = Number(env.JOB_PARALLEL) || 1;
-    ctx.waitUntil(Promise.all([runJobs(env, Math.min(90, Math.max(9, Math.round(budget / 5))), 30, "gen_image"), runJobs(env, budget, Infinity, undefined, parallel)]));
+    ctx.waitUntil(Promise.all([runJobs(env, Math.min(180, Math.max(9, Math.round(budget / 4))), 60, "gen_image"), runJobs(env, budget, Infinity, undefined, parallel)]));
     // Une fois par jour (vers 4 h au Québec) : effacer les compteurs anti-abus de la veille,
     // comme l'annonce la politique de confidentialité.
     const t = new Date(event.scheduledTime);
