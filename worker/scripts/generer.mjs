@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
-const API = process.env.GUSTO_API ?? "https://gusto-api.benjaminpaul00.workers.dev";
+const API = process.env.GUSTO_API ?? "https://api.mongusto.ca";
 const tours = Number(process.argv[process.argv.indexOf("--tours") + 1]) || 20;
 const PAUSE = 5_000; // courte pause entre deux lots (chaque lot traite 2 tâches)
 

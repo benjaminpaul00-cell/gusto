@@ -6,7 +6,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { isFree, matchIngredient } from "../src/epiceries.ts";
 
-const API = process.env.GUSTO_API ?? "https://gusto-api.benjaminpaul00.workers.dev";
+const API = process.env.GUSTO_API ?? "https://api.mongusto.ca";
 const token = readFileSync(new URL("../.admin-token", import.meta.url), "utf8").trim();
 const LOG = new URL("../prix.log", import.meta.url);
 const MAX_ROUNDS = Number(process.env.GUSTO_MAX_ROUNDS) || 40; // 40 × 25 ingrédients au plus par exécution

@@ -2,7 +2,7 @@
 
 Planificateur de menus pour le Québec : l’utilisateur choisit son épicerie, ses repas, la durée, le nombre de personnes, les cuisines, le genre de repas et son budget. Gusto produit un menu avec images, une liste d’épicerie au prix réel, et l’exporte en PDF ou dans le calendrier. Aucun compte, aucun abonnement.
 
-**En ligne :** site https://gusto.benjaminpaul00.workers.dev · API https://gusto-api.benjaminpaul00.workers.dev
+**En ligne :** site https://mongusto.ca · API https://api.mongusto.ca (les anciennes adresses `*.workers.dev` redirigent ou restent actives)
 
 ## Architecture
 
@@ -120,7 +120,7 @@ cd apps/web && npm run web                             # EXPO_PUBLIC_API_URL=htt
 ## Publicité
 
 - Web : AdSense, chargé seulement après le consentement aux témoins (Loi 25). Remplacez l’identifiant dans `apps/web/public/ads.txt`.
-- AdSense n’accepte pas les adresses `*.workers.dev` : il faut un nom de domaine à soi.
+- Domaine : mongusto.ca (acheté chez Cloudflare). Le site est branché par `routes` dans `apps/web/wrangler.jsonc` ; `apps/web/site-worker.js` redirige www et l’ancienne adresse vers https://mongusto.ca.
 - Le site est généré en pages HTML statiques avec du contenu indexable : `/guides` (7 guides), `/cuisines` (12 pages), `/a-propos`, `/confidentialite`. `npm run build:web` produit aussi `sitemap.xml` et `robots.txt`. Soumettez `sitemap.xml` dans Google Search Console avant de demander l’approbation AdSense.
 - Apps : AdMob, à brancher dans `src/components/AdSlot.tsx` au moment de créer les apps.
 

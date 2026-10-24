@@ -5,8 +5,18 @@
   "name": "gusto",
   "compatibility_date": "2026-10-19",
   "observability": { "enabled": true },
+  // Petit script qui redirige www.mongusto.ca et l'ancienne adresse workers.dev vers https://mongusto.ca
+  "main": "site-worker.js",
+  // Garder l'ancienne adresse active : elle redirige vers mongusto.ca
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "mongusto.ca", "custom_domain": true },
+    { "pattern": "www.mongusto.ca", "custom_domain": true }
+  ],
   "assets": {
     "directory": "dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
     // /guides/prix-unitaire → guides/prix-unitaire.html
     "html_handling": "auto-trailing-slash",
     // Adresse inconnue → 404.html (avec un vrai code 404)

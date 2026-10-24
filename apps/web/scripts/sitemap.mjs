@@ -1,10 +1,11 @@
 // Après « expo export » : écrit dist/sitemap.xml et dist/robots.txt pour Google.
-// Adresse du site : variable EXPO_PUBLIC_SITE_URL (par défaut, l'adresse Cloudflare Pages).
+// Adresse du site : variable EXPO_PUBLIC_SITE_URL (fichier .env), par défaut https://mongusto.ca.
 import { copyFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const dist = new URL("../dist/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
-const site = (process.env.EXPO_PUBLIC_SITE_URL || "https://gusto.pages.dev").replace(/\/$/, "");
+try { process.loadEnvFile(".env"); } catch { /* pas de fichier .env : variables du système */ }
+const site = (process.env.EXPO_PUBLIC_SITE_URL || "https://mongusto.ca").replace(/\/$/, "");
 const SKIP = new Set(["menu", "_sitemap", "+not-found"]); // pages personnelles ou techniques
 
 // Page de débogage d'Expo Router : inutile en production.

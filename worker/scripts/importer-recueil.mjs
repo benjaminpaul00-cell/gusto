@@ -2,7 +2,7 @@
 // Usage : node scripts/importer-recueil.mjs recueil.json
 import { readFileSync } from "node:fs";
 
-const API = process.env.API_URL ?? "https://gusto-api.benjaminpaul00.workers.dev";
+const API = process.env.API_URL ?? "https://api.mongusto.ca";
 const token = readFileSync(new URL("../.admin-token", import.meta.url), "utf8").trim();
 const recipes = JSON.parse(readFileSync(process.argv[2], "utf8"));
 
