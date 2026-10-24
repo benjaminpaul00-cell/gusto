@@ -218,7 +218,7 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
   return new Response("Introuvable", { status: 404 });
 }
 
-export default {
+const app = {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
@@ -257,5 +257,22 @@ export default {
     // comme l'annonce la politique de confidentialité.
     const t = new Date(event.scheduledTime);
     if (t.getUTCHours() === 8 && t.getUTCMinutes() < 10) ctx.waitUntil(cleanup(env));
+  },
+} satisfies ExportedHandler<Env>;
+
+/** Aperçus locaux du site (localhost) : autorisés en plus de mongusto.ca, pour tester avant une mise en ligne. */
+function allowLocalPreview(req: Request, res: Response): Response {
+  const origin = req.headers.get("Origin") ?? "";
+  if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return res;
+  const out = new Response(res.body, res);
+  out.headers.set("Access-Control-Allow-Origin", origin);
+  out.headers.append("Vary", "Origin");
+  return out;
+}
+
+export default {
+  ...app,
+  async fetch(req: Request, env: Env): Promise<Response> {
+    return allowLocalPreview(req, await app.fetch(req, env));
   },
 } satisfies ExportedHandler<Env>;
