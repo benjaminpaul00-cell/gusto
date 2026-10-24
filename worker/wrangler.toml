@@ -1,0 +1,51 @@
+name = "gusto-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# Déclencheurs automatiques :
+# - toutes les 10 minutes : traite quelques tâches d'IA (recettes, ingrédients, images)
+# - jeudi 9 h UTC (5 h au Québec) : rafraîchit les prix avec les nouvelles circulaires
+[triggers]
+crons = ["*/10 * * * *", "0 9 * * 4"]
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gusto"
+database_id = "fea0df7e-6b63-4d0c-bf86-35c9138705a3"
+
+# Photos des plats. Pour l'instant dans Workers KV (gratuit, sans carte de crédit).
+[[kv_namespaces]]
+binding = "IMAGES_KV"
+id = "7fa7cfeb394f46f58217bee0e63e6dc8"
+
+# Plus tard, pour passer à R2 (plus adapté aux images, demande une carte de crédit) :
+#   1. activer R2 dans le tableau de bord Cloudflare, puis : npx wrangler r2 bucket create gusto-images
+#   2. retirer les « # » des trois lignes ci-dessous et redéployer (R2 est alors utilisé en priorité)
+#   3. POST /admin/images-backfill?token=… pour regénérer les photos dans R2
+# [[r2_buckets]]
+# binding = "IMAGES"
+# bucket_name = "gusto-images"
+
+[vars]
+# Adresse du site (Cloudflare Pages) autorisée à appeler l'API. "*" pendant le développement.
+ALLOWED_ORIGIN = "https://gusto.benjaminpaul00.workers.dev"
+# Adresse publique de cette API, utilisée pour construire l'URL des images.
+PUBLIC_API_URL = "https://gusto-api.benjaminpaul00.workers.dev"
+DAILY_PLAN_LIMIT = "40"
+# Modèles (modifiables sans toucher au code si un fournisseur change ses offres gratuites)
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
+MISTRAL_MODEL = "mistral-small-latest"
+GROQ_MODEL = "openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b"
+WORKERS_AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+WORKERS_AI_IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"
+
+# Secrets (ne jamais les écrire ici) :
+#   npx wrangler secret put ADMIN_TOKEN
+#   npx wrangler secret put IP_SALT
+#   npx wrangler secret put GEMINI_API_KEY
+#   npx wrangler secret put MISTRAL_API_KEY   (optionnel)
+#   npx wrangler secret put GROQ_API_KEY      (optionnel)

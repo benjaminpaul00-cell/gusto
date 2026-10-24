@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Gusto",
+    "slug": "gusto",
+    "scheme": "gusto",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "ca.gusto.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "ca.gusto.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#163B2D"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png",
+      "name": "Gusto",
+      "themeColor": "#163B2D"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "icon": "./assets/icon.png"
+  }
+}

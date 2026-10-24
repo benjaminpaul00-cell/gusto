@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+.wrangler/
+.env
+.env.local
+.dev.vars
+*.log
+.DS_Store
+
+# Jeton d'administration local (scripts/nouveau-jeton.mjs)
+.admin-token
+# Journal du programme de prix
+worker/prix.log
