@@ -131,6 +131,11 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
   if (path === "/admin/images") return adminImages(env, token);
   if (path === "/admin/status") return adminStatus(env);
   // Modèles disponibles chez Groq (pour choisir GROQ_MODEL quand un modèle est retiré)
+  // Diagnostic : épiceries.ca répond-il au serveur ? (requête normale, identifiée comme Gusto)
+  if (path === "/admin/test-epiceries") {
+    const r = await fetch("https://epiceries.ca/api?endpoint=search&q=lait&limit=1", { headers: { "User-Agent": "Gusto (planificateur de menus)" } });
+    return json(env, { status: r.status, body: (await r.text()).slice(0, 200) });
+  }
   // Essai d'une photo par Mistral : renvoie l'image ou l'erreur
   if (path === "/admin/test-image") {
     try {
