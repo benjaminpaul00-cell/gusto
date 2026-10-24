@@ -43,6 +43,7 @@ export interface IngredientInfo {
 
 export interface StoreProduct {
   ingredient: string;
+  store: string; // bannière où l'acheter
   productName: string;
   sizeQty: number;
   sizeUnit: Unit;
@@ -165,6 +166,20 @@ function approxCost(r: Resolved, data: PlannerData, week: number): number {
   return c;
 }
 
+/** Part du coût d'une recette (hors garde-manger) qui vient de produits en rabais cette semaine. */
+function specialShare(r: Resolved, data: PlannerData): number {
+  let all = 0, onSale = 0;
+  for (const n of r.needs) {
+    if (n.pantry || n.source !== "store") continue;
+    const { price, size, product } = unitCost(data, n, 1);
+    const c = (n.qty / size) * price;
+    all += c;
+    if (product?.discounted) onSale += c;
+  }
+  return all > 0 ? onSale / all : 0;
+}
+const SPECIALS_MIN_SHARE = 0.35;
+
 interface Slot {
   week: number;
   day: number;
@@ -229,6 +244,7 @@ export function costPlan(slots: Slot[], data: PlannerData, weeks: number, pantry
         total: line,
         discounted: n.source === "store" && w === 1 && !!product?.discounted,
         estimated: n.source === "store" && !!product?.estimated,
+        ...(n.source === "store" && product ? { store: product.store as ListItem["store"] } : {}),
         section: info?.section ?? "Autres",
       };
       (n.source === "specialty" ? specialty : n.pantry ? pantry : list).push(item);
@@ -244,7 +260,7 @@ export function costPlan(slots: Slot[], data: PlannerData, weeks: number, pantry
 
 export function validateRequest(req: PlanRequest): string | null {
   if (!req || typeof req !== "object") return "Requête invalide.";
-  if (!req.store) return "Choisissez une épicerie.";
+  if (!req.store && !req.stores?.length) return "Choisissez au moins une épicerie.";
   if (!req.meals?.length) return "Choisissez au moins un repas.";
   if (!(req.weeks >= 1 && req.weeks <= 4)) return "La durée doit être de 1 à 4 semaines.";
   if (!(req.people >= 1 && req.people <= 20)) return "Le nombre de personnes doit être de 1 à 20.";
@@ -289,6 +305,7 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
 
   // 1. Recettes admissibles et réalisables à cette épicerie
   const notices: string[] = [];
+  if (req.specialsOnly && req.weeks > 1) notices.push("Les spéciaux changent chaque jeudi : la semaine 1 profite des rabais actuels, les semaines suivantes sont calculées au prix régulier.");
   const eligible = (meal: MealId, cuisines: readonly string[] | null, strictStyles: boolean) => {
     const pool: Resolved[] = [];
     for (const r of data.recipes) {
@@ -318,6 +335,16 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         message: "Aucune recette ne respecte encore ces restrictions alimentaires pour cette épicerie. Réessaie bientôt : de nouvelles recettes s’ajoutent chaque jour.",
       };
     }
+    // Spéciaux : recettes dont une bonne part du coût est en rabais cette semaine ; s'il y en a trop peu, les plus avantageuses
+    if (req.specialsOnly) {
+      const scored = pool.map((r) => ({ r, s: specialShare(r, data) })).sort((a, b) => b.s - a.s);
+      const good = scored.filter((x) => x.s >= SPECIALS_MIN_SHARE);
+      if (new Set(good.map((x) => normalize(x.r.recipe.name))).size >= 6) pool = good.map((x) => x.r);
+      else if (scored.some((x) => x.s > 0)) {
+        pool = scored.filter((x) => x.s > 0).slice(0, Math.max(12, good.length)).map((x) => x.r);
+        if (!notices.some((n) => n.startsWith("Peu de spéciaux"))) notices.push("Peu de spéciaux correspondent à tes choix cette semaine : ton menu prend les recettes qui en profitent le plus.");
+      } else if (!notices.some((n) => n.startsWith("Aucun spécial"))) notices.push("Aucun spécial ne correspond à tes choix cette semaine : ton menu est fait au meilleur prix habituel.");
+    }
     for (const r of pool) usedCuisines.add(r.recipe.cuisine);
     // Moins de 4 plats différents : on complète avec d'autres cuisines plutôt que de répéter le même plat
     const names = new Set(pool.map((r) => normalize(r.recipe.name)));
@@ -334,7 +361,9 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
   }
   const waiting = req.cuisines.filter((c) => !usedCuisines.has(c));
   if (waiting.length && waiting.length < req.cuisines.length)
-    notices.push(`Les recettes ${cuisineList(waiting, "adj")} arrivent bientôt : ton menu utilise tes autres cuisines pour l’instant.`);
+    notices.push(req.specialsOnly
+      ? `Aucune recette ${cuisineList(waiting, "adj").replace(/s(?= |$)/g, "").replace(" et ", " ou ")} ne profite des spéciaux cette semaine : ton menu utilise tes autres cuisines.`
+      : `Les recettes ${cuisineList(waiting, "adj")} arrivent bientôt : ton menu utilise tes autres cuisines pour l’instant.`);
 
   // 2. Sélection initiale : variété d'abord, en alternant les cuisines, du moins cher au plus cher
   const slots: Slot[] = [];

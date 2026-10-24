@@ -5,7 +5,7 @@
 const HOME = "mongusto.ca";
 const SITE = `https://${HOME}`;
 const PAGE_TTL = 3600; // pages de recettes gardées 1 h dans le cache de Cloudflare
-const CACHE_VERSION = "2"; // à augmenter pour vider le cache des pages de recettes après un changement de mise en page
+const CACHE_VERSION = "3"; // à augmenter pour vider le cache des pages de recettes après un changement de mise en page
 
 export default {
   async fetch(req, env, ctx) {
@@ -92,7 +92,8 @@ const money = (n) => (Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} $`
 const ofCuisine = (id, label) => (id === "mexicaine" ? `d’${label}` : `${label.toLowerCase()}s`);
 const LOGOS = { maxi: "maxi.svg", superc: "superc.png", iga: "iga.svg", metro: "metro.svg", provigo: "provigo.svg", walmart: "walmart.svg" };
 
-const LOGO = `<img src="/favicon.svg" width="34" height="34" alt="">`;
+// Logo « mon gusto » (version claire en mode sombre)
+const LOGO = `<picture><source srcset="/logo-clair.png" media="(prefers-color-scheme: dark)"><img src="/logo.png" width="102" height="66" alt="mon gusto"></picture>`;
 
 const CSS = `
 :root{--bg:#fff;--alt:#F3F4FF;--ink:#0E1030;--muted:#585D82;--line:#E2E4F4;--edge:#0E1030;--primary:#2B44FF;--pink:#FF5FA2;--tag:#FFE14D;--card:#fff;--shadow:4px 4px 0 var(--edge)}
@@ -102,7 +103,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.6 "Plus Jaka
 a{color:inherit}img{max-width:100%;display:block}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 header.top{border-bottom:2px solid var(--edge);background:var(--bg);position:sticky;top:0;z-index:5}
-header.top .wrap{display:flex;align-items:center;gap:20px;height:68px}
+header.top .wrap{display:flex;align-items:center;gap:20px;height:86px}
 .brand{display:flex;align-items:center;gap:8px;text-decoration:none;font-weight:800;font-size:24px;letter-spacing:-.5px}
 nav.links{display:flex;gap:22px;margin-left:auto;font-weight:600;font-size:15px}
 nav.links a{text-decoration:none}nav.links a:hover{color:var(--primary)}
@@ -173,7 +174,7 @@ function layout({ title, description, canonical, body, jsonld, image }) {
 <meta property="og:url" content="${SITE}${esc(canonical)}">
 <meta property="og:image" content="${esc(image || `${SITE}/og.png`)}">
 <meta name="google-adsense-account" content="ca-pub-2727710137498918">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>${CSS}</style>
@@ -181,7 +182,7 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld).replace(
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a class="brand" href="/">${LOGO}gusto</a>
+  <a class="brand" href="/" aria-label="mon gusto, accueil">${LOGO}</a>
   <nav class="links"><a href="/recettes">Recettes</a><a href="/#comment">Comment ça marche</a><a href="/guides">Guides</a><a href="/cuisines">Cuisines</a></nav>
   <a class="btn" href="/">Créer mon menu</a>
 </div></header>

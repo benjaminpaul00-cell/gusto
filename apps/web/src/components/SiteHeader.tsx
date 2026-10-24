@@ -18,9 +18,9 @@ export function SiteHeader({ onCta }: { onCta?: () => void }) {
   const t = useTheme();
   return (
     <View role="banner" style={{ backgroundColor: t.bg, borderBottomWidth: 2, borderBottomColor: t.edge, zIndex: 10 }}>
-      <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), height: 76, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), height: 88, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Link href="/" accessibilityLabel="Gusto, accueil" {...r("wiggle")}>
-          <Logo size={40} />
+          <Logo size={47} />
         </Link>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space(8) }}>
           <View role="navigation" {...r("hide-md")} style={{ flexDirection: "row", gap: space(7) }}>

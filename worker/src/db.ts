@@ -83,6 +83,7 @@ export async function loadPlannerData(env: Env, store: string): Promise<PlannerD
   for (const p of rows.filter((x) => x.store === store)) {
     add({
       ingredient: p.ingredient,
+      store,
       productName: p.product_name,
       sizeQty: p.size_qty,
       sizeUnit: p.size_unit as Unit,
@@ -101,6 +102,7 @@ export async function loadPlannerData(env: Env, store: string): Promise<PlannerD
     const price = Math.round(p.regular_price * 1.1 * 100) / 100;
     add({
       ingredient: p.ingredient,
+      store, // acheté dans la bannière choisie, au prix estimé
       productName: p.product_name,
       sizeQty: p.size_qty,
       sizeUnit: p.size_unit as Unit,
@@ -114,6 +116,31 @@ export async function loadPlannerData(env: Env, store: string): Promise<PlannerD
   const data = { recipes, ingredients, products };
   memo.set(store, { at: now(), data });
   return data;
+}
+
+/**
+ * Plusieurs épiceries : pour chaque ingrédient, les formats relevés dans toutes les bannières choisies.
+ * Le calcul prend ensuite le moins cher, donc chaque article est acheté là où il coûte le moins.
+ * Un ingrédient suivi dans aucune d'elles garde le prix estimé de la première.
+ */
+export async function loadPlannerDataFor(env: Env, stores: string[]): Promise<PlannerData> {
+  const list = [...new Set(stores)].filter(Boolean);
+  if (list.length <= 1) return loadPlannerData(env, list[0] ?? "maxi");
+  const all = [];
+  for (const s of list) all.push(await loadPlannerData(env, s));
+  const products = new Map<string, StoreProduct[]>();
+  for (const data of all) {
+    for (const [ing, prods] of data.products) {
+      const real = prods.filter((p) => !p.estimated);
+      if (!real.length) continue;
+      const cur = products.get(ing) ?? [];
+      // Mêmes unités seulement (le calcul additionne des quantités)
+      const unit = cur[0]?.sizeUnit ?? real[0].sizeUnit;
+      products.set(ing, [...cur, ...real.filter((p) => p.sizeUnit === unit)]);
+    }
+  }
+  for (const [ing, prods] of all[0].products) if (!products.has(ing)) products.set(ing, prods);
+  return { recipes: all[0].recipes, ingredients: all[0].ingredients, products };
 }
 
 export async function enqueue(env: Env, kind: string, payload: unknown, delayMs = 0) {

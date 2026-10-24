@@ -1,7 +1,7 @@
 import { CUISINES, DIETS, MEALS, STORES, STYLES, type PlanRequest } from "../../shared/options";
-import { checkRateLimit, enqueue, loadPlannerData, type Env } from "./db";
+import { checkRateLimit, enqueue, loadPlannerData, loadPlannerDataFor, type Env } from "./db";
 import { getImage } from "./images";
-import { cleanup, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
+import { cleanup, enqueueDietTagging, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
 import type { StoreMatch } from "./epiceries";
 import { planMenu } from "./planner";
 import { getRecipe, listRecipes } from "./recipes";
@@ -22,8 +22,12 @@ const cors = (env: Env) => ({
 function sanitize(body: any): PlanRequest {
   const pick = <T extends string>(list: readonly { id: T }[], vals: unknown): T[] =>
     Array.isArray(vals) ? [...new Set(vals.filter((v): v is T => list.some((x) => x.id === v)))] : [];
+  // Plusieurs épiceries possibles ; « store » (la première) reste pour l'affichage et les anciens clients
+  const stores = pick(STORES, Array.isArray(body?.stores) && body.stores.length ? body.stores : [body?.store]);
   return {
-    store: STORES.some((s) => s.id === body?.store) ? body.store : (undefined as never),
+    store: stores[0] ?? (undefined as never),
+    stores,
+    specialsOnly: !!body?.specialsOnly,
     meals: pick(MEALS, body?.meals),
     weeks: Math.round(Number(body?.weeks)),
     people: Math.round(Number(body?.people)),
@@ -41,7 +45,7 @@ async function handlePlan(req: Request, env: Env): Promise<Response> {
     return json(env, { ok: false, reason: "rate_limited", message: "Limite quotidienne atteinte. Réessayez demain." }, 429);
   }
   const request = sanitize(await req.json().catch(() => null));
-  const data = await loadPlannerData(env, request.store ?? "maxi");
+  const data = await loadPlannerDataFor(env, request.stores?.length ? request.stores : [request.store ?? "maxi"]);
   const base = env.PUBLIC_API_URL.replace(/\/$/, "");
   const result = planMenu(request, data, (r) => (r.image ? `${base}/img/${r.image}` : null));
   return json(env, result, result.ok ? 200 : result.reason === "invalid" ? 400 : 200);
@@ -173,6 +177,8 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
     for (let i = 0; i < list.length; i += 2) { await enqueue(env, "import_recipes", { recipes: list.slice(i, i + 2) }); jobs++; }
     return json(env, { received: list.length, jobs });
   }
+  // Classe toutes les recettes pour « sans lactose » et « diabétique »
+  if (path === "/admin/tag-diets" && req.method === "POST") return json(env, await enqueueDietTagging(env));
   if (path === "/admin/seed") return json(env, { queued: await seed(env) });
   // Prix envoyés par scripts/prix.mjs : { items: [{ ingredient, matches: StoreMatch[] }] }
   if (path === "/admin/prices") {

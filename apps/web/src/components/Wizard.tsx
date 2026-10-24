@@ -1,11 +1,11 @@
 // Planificateur interactif : une question à la fois, grandes tuiles, transitions animées.
 import { router } from "expo-router";
 import {
-  ArrowLeft, ArrowRight, Ban, Check, CookingPot, Dumbbell, Flame, Leaf, Minus, Moon, Nut, Pencil, Plus,
+  ArrowLeft, ArrowRight, Ban, BadgePercent, CandyOff, Check, CookingPot, Dumbbell, Flame, Leaf, MilkOff, Minus, Moon, Nut, Pencil, Plus,
   Sparkles, Sun, Sunrise, User, Wheat,
 } from "lucide-react-native";
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Platform, Pressable, Switch, Text, TextInput, View, type ViewStyle } from "react-native";
+import { Platform, Pressable, Switch, Text, TextInput, useWindowDimensions, View, type ViewStyle } from "react-native";
 import {
   BUDGET_SAFETY, CUISINES, DIETS, LIMITS, MEALS, STORES, STYLES,
   type CuisineId, type DietId, type MealId, type PlanRequest, type StoreId, type StyleId,
@@ -19,7 +19,7 @@ import { Button } from "./ui";
 
 type Icon = ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 // Rien n'est choisi d'avance : c'est l'utilisateur qui répond à chaque question.
-const DEFAULT: PlanRequest = { store: "" as StoreId, meals: [], weeks: 0, people: 0, cuisines: [], styles: [], diets: [], budget: 0, onlyStore: false };
+const DEFAULT: PlanRequest = { store: "" as StoreId, stores: [], specialsOnly: false, meals: [], weeks: 0, people: 0, cuisines: [], styles: [], diets: [], budget: 0, onlyStore: false };
 const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 const TONES = ["#2B44FF", "#FF5FA2", "#FFE14D"];
 const MEAL_INFO: Record<MealId, { icon: Icon; hint: string }> = {
@@ -31,7 +31,8 @@ const STYLE_INFO: Record<StyleId, { icon: Icon; hint: string }> = {
   leger: { icon: Leaf, hint: "Moins de 500 calories" },
   gourmand: { icon: Flame, hint: "Réconfortant, pour se gâter" },
 };
-const DIET_INFO: Record<DietId, Icon> = { vegetarien: Leaf, sans_gluten: Wheat, sans_noix: Nut };
+const DIET_INFO: Record<DietId, Icon> = { vegetarien: Leaf, sans_gluten: Wheat, sans_noix: Nut, sans_lactose: MilkOff, diabetique: CandyOff };
+const DIET_HINT: Partial<Record<DietId, string>> = { diabetique: "Peu de sucre, glucides modérés" };
 const dishes = (id: string) => {
   const ul = CUISINE_PAGES.find((x) => x.id === id)?.blocks.find((b) => "ul" in b) as { ul: string[] } | undefined;
   return (ul?.ul ?? []).slice(0, 2).map((d) => d.split(/ ?[:(,]/)[0].trim()).join(", ");
@@ -43,6 +44,8 @@ const LABEL: Record<Step, string> = { store: "Épicerie", meals: "Repas", weeks:
 
 export function Wizard() {
   const t = useTheme();
+  // Téléphone : tuiles de cuisine plus serrées pour que les noms longs (« Vénézuélienne ») tiennent
+  const narrow = useWindowDimensions().width < 560;
   const [form, setForm] = useState<PlanRequest>(DEFAULT);
   const [i, setI] = useState(0);
   const [budgetText, setBudgetText] = useState("");
@@ -54,14 +57,21 @@ export function Wizard() {
 
   const set = <K extends keyof PlanRequest>(k: K, v: PlanRequest[K]) => { setForm((f) => ({ ...f, [k]: v })); setError(null); };
   const valid: Record<Step, boolean> = {
-    store: !!form.store, meals: form.meals.length > 0, weeks: form.weeks > 0, people: form.people > 0, cuisines: form.cuisines.length > 0,
+    store: (form.stores ?? []).length > 0, meals: form.meals.length > 0, weeks: form.weeks > 0, people: form.people > 0, cuisines: form.cuisines.length > 0,
     styles: form.styles.length > 0, diets: dietsChosen, budget: form.budget > 0, recap: true,
   };
-  const go = (n: number) => {
-    setI(Math.max(0, Math.min(STEPS.length - 1, n)));
-    // Garder le haut de la carte visible quand on change de question
-    if (Platform.OS === "web" && top.current?.getBoundingClientRect?.().top < 0) top.current.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const go = (n: number) => setI(Math.max(0, Math.min(STEPS.length - 1, n)));
+  // Nouvelle question : ramener le haut de la carte sous l'en-tête (après l'affichage, une fois la hauteur de la page ajustée).
+  // Sans ça, sur téléphone, passer d'une longue question (cuisines) à une courte laisse l'écran plus bas, sur la section suivante.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return; }
+    if (Platform.OS !== "web") return;
+    const el = top.current as HTMLElement | null;
+    if (!el?.getBoundingClientRect) return;
+    el.style.scrollMarginTop = "104px"; // hauteur de l'en-tête fixe + marge
+    if (el.getBoundingClientRect().top < 96) el.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [i, busy]);
   const next = () => valid[step] && go(i + 1);
   const pick = <K extends keyof PlanRequest>(k: K, v: PlanRequest[K]) => { set(k, v); setTimeout(() => go(i + 1), 260); };
 
@@ -96,7 +106,10 @@ export function Wizard() {
     setError({ message: res.message, minBudget: res.minBudget });
   }
 
-  const storeLabel = STORES.find((s) => s.id === form.store)?.label ?? "";
+  const stores = form.stores ?? [];
+  const storeLabel = stores.map((id) => STORES.find((s) => s.id === id)?.label).filter(Boolean).join(", ");
+  // Plusieurs épiceries : la première reste « store » (affichage, compatibilité)
+  const setStores = (list: StoreId[]) => setForm((f) => ({ ...f, stores: list, store: list[0] ?? ("" as StoreId) }));
   const mealsCount = form.meals.length * 7 * form.weeks;
 
   return (
@@ -119,14 +132,23 @@ export function Wizard() {
         {busy ? <Computing store={storeLabel} t={t} /> : (
           <View key={step} {...r("step-in")}>
             {step === "store" && (
-              <Q title="Où fais-tu ton épicerie ?" hint="Gusto utilisera les prix de la semaine de cette bannière." t={t}>
+              <Q title="Où fais-tu ton épicerie ?" hint="Choisis-en une ou plusieurs : chaque article sera acheté là où il coûte le moins cette semaine." t={t}>
                 <Grid>
                   {STORES.map((s, k) => (
-                    <Tile key={s.id} selected={form.store === s.id} onPress={() => pick("store", s.id as StoreId)} t={t} radio delay={k} height={124} color={t.tag}>
+                    <Tile key={s.id} selected={stores.includes(s.id)} onPress={() => { setStores(toggle(stores, s.id as StoreId)); setError(null); }} t={t} delay={k} height={124} color={t.tag}>
                       <StoreLogo id={s.id as StoreId} label={s.label} maxW={130} maxH={52} />
                     </Tile>
                   ))}
                 </Grid>
+                <Pressable onPress={() => set("specialsOnly", !form.specialsOnly)} accessibilityRole="switch" accessibilityState={{ checked: !!form.specialsOnly }}
+                  style={{ marginTop: space(6), flexDirection: "row", alignItems: "center", gap: space(3), padding: space(4), borderRadius: radius.lg, borderWidth: 2, borderColor: t.edge, backgroundColor: form.specialsOnly ? t.tagSoft : t.surfaceAlt }}>
+                  <BadgePercent size={22} color={t.ink} strokeWidth={2.25} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: font.bold, fontSize: 15.5, color: t.ink }}>Bâtir mon menu avec les spéciaux de la semaine</Text>
+                    <Text style={{ fontFamily: font.medium, fontSize: 13.5, lineHeight: 19, color: t.muted }}>Gusto choisit les recettes dont les ingrédients sont en rabais cette semaine.</Text>
+                  </View>
+                  <Switch value={!!form.specialsOnly} onValueChange={(v) => set("specialsOnly", v)} trackColor={{ true: t.primary, false: t.line }} thumbColor="#FFFFFF" {...({ activeThumbColor: "#FFFFFF" } as any)} accessibilityLabel="Bâtir mon menu avec les spéciaux de la semaine" />
+                </Pressable>
               </Q>
             )}
 
@@ -193,8 +215,8 @@ export function Wizard() {
                   {CUISINES.map((c, k) => {
                     const on = form.cuisines.includes(c.id);
                     return (
-                      <Tile key={c.id} selected={on} onPress={() => set("cuisines", toggle(form.cuisines, c.id as CuisineId))} t={t} delay={k % 6} height={112} align="flex-start" color={TONES[k % 3]}>
-                        <Text style={{ fontFamily: font.display, fontSize: 19, color: on ? (k % 3 === 0 ? "#FFFFFF" : "#0E1030") : t.ink }}>{c.label}</Text>
+                      <Tile key={c.id} selected={on} onPress={() => set("cuisines", toggle(form.cuisines, c.id as CuisineId))} t={t} delay={k % 6} height={112} align="flex-start" color={TONES[k % 3]} pad={narrow ? space(3) : undefined}>
+                        <Text style={{ fontFamily: font.display, fontSize: narrow ? 15 : 18, maxWidth: "100%", color: on ? (k % 3 === 0 ? "#FFFFFF" : "#0E1030") : t.ink }}>{c.label}</Text>
                         <Text numberOfLines={2} style={{ fontFamily: font.medium, fontSize: 12.5, lineHeight: 17, color: on ? (k % 3 === 0 ? "#DDE2FF" : "#3B3F66") : t.muted, marginTop: 4 }}>{dishes(c.id)}</Text>
                       </Tile>
                     );
@@ -219,14 +241,14 @@ export function Wizard() {
             )}
 
             {step === "diets" && (
-              <Q title="Des restrictions alimentaires ?" hint="Facultatif. En cas d’allergie, vérifie toujours les étiquettes." t={t}>
+              <Q title="Des restrictions alimentaires ?" hint="Facultatif. En cas d’allergie, vérifie toujours les étiquettes. « Diabétique » est un repère général : il ne remplace pas l’avis d’un professionnel de la santé." t={t}>
                 <Grid cols={4}>
                   <Tile selected={dietsChosen && form.diets.length === 0} onPress={() => { setDietsChosen(true); pick("diets", []); }} t={t} height={150}>
                     <TileBody icon={Ban} title="Aucune" hint="Tout me va" tone={2} on={dietsChosen && form.diets.length === 0} t={t} />
                   </Tile>
                   {DIETS.map((d, k) => (
                     <Tile key={d.id} selected={form.diets.includes(d.id)} onPress={() => { const next = toggle(form.diets, d.id as DietId); setDietsChosen(next.length > 0); set("diets", next); }} t={t} delay={k + 1} height={150}>
-                      <TileBody icon={DIET_INFO[d.id]} title={d.label} tone={k} on={form.diets.includes(d.id)} t={t} />
+                      <TileBody icon={DIET_INFO[d.id]} title={d.label} hint={DIET_HINT[d.id]} tone={k} on={form.diets.includes(d.id)} t={t} />
                     </Tile>
                   ))}
                 </Grid>
@@ -241,7 +263,7 @@ export function Wizard() {
               <Q title="Ton menu est prêt à être calculé." hint="Vérifie tes choix ; touche une ligne pour la modifier." t={t}>
                 <View style={{ borderWidth: 2, borderColor: t.edge, borderRadius: radius.lg, overflow: "hidden" }}>
                   {([
-                    ["store", "Épicerie", storeLabel],
+                    ["store", stores.length > 1 ? "Épiceries" : "Épicerie", `${storeLabel}${form.specialsOnly ? " · spéciaux de la semaine" : ""}`],
                     ["meals", "Repas", form.meals.map((m) => MEALS.find((x) => x.id === m)?.label).join(", ")],
                     ["weeks", "Durée", `${form.weeks} semaine${form.weeks > 1 ? "s" : ""} · ${mealsCount} repas`],
                     ["people", "Personnes", String(form.people)],
@@ -312,8 +334,8 @@ const wrap = (children: ReactNode, cols: number) =>
   (Array.isArray(children) ? children.flat() : [children]).map((c: any, k) =>
     c ? <View key={c.key ?? k} {...r("tile-2")} style={{ flexBasis: cols === 4 ? "22%" : "30%", flexGrow: 1, minWidth: cols === 4 ? 150 : 170 }}>{c}</View> : null);
 
-function Tile({ selected, onPress, children, t, radio, delay = 0, height = 120, align = "center", color }: {
-  selected: boolean; onPress: () => void; children: ReactNode; t: Theme; radio?: boolean; delay?: number; height?: number; align?: "center" | "flex-start"; color?: string;
+function Tile({ selected, onPress, children, t, radio, delay = 0, height = 120, align = "center", color, pad }: {
+  selected: boolean; onPress: () => void; children: ReactNode; t: Theme; radio?: boolean; delay?: number; height?: number; align?: "center" | "flex-start"; color?: string; pad?: number;
 }) {
   const bg = selected ? (color ?? t.primary) : t.surface;
   return (
@@ -321,12 +343,12 @@ function Tile({ selected, onPress, children, t, radio, delay = 0, height = 120, 
       {...r("press", "reveal-scale", `d${Math.min(6, delay + 1)}`)}
       style={{
         minHeight: height, borderRadius: radius.lg, borderWidth: 2, borderColor: t.edge, backgroundColor: bg,
-        boxShadow: selected ? `5px 5px 0 ${t.edge}` : `3px 3px 0 ${t.edge}`, padding: space(5),
+        boxShadow: selected ? `5px 5px 0 ${t.edge}` : `3px 3px 0 ${t.edge}`, padding: pad ?? space(5),
         alignItems: align, justifyContent: "center", transform: [{ translateY: selected ? -2 : 0 }],
       } as ViewStyle}>
       {children}
       {selected ? (
-        <View {...r("pop-in")} style={{ position: "absolute", top: 10, right: 10, width: 26, height: 26, borderRadius: 13, backgroundColor: color === t.pink || color === "#FF5FA2" ? t.tag : t.pink, borderWidth: 2, borderColor: t.edge, alignItems: "center", justifyContent: "center" }}>
+        <View {...r("pop-in")} style={{ position: "absolute", top: -11, right: -11, width: 26, height: 26, borderRadius: 13, backgroundColor: color === t.pink || color === "#FF5FA2" ? t.tag : t.pink, borderWidth: 2, borderColor: t.edge, alignItems: "center", justifyContent: "center" }}>
           <Check size={14} color="#0E1030" strokeWidth={3.5} />
         </View>
       ) : null}

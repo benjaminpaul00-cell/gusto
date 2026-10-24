@@ -66,6 +66,13 @@ const isInfo = (x: any): x is AiIngredientInfo =>
 // Catégories alimentaires d'épiceries.ca (endpoint=categories), pour cibler la recherche de produits.
 const EP_CATEGORIES = "1 Légumes, 2 Fruits, 3 Salades préemballées, 4 Fines herbes, 5 Légumes précoupés, 6 Fruits séchés et noix, 7 Lait, 8 Crème, 9 Oeufs, 10 Beurre, 11 Fromage, 12 Yogourt, 14 Crème sure, 15 Produits laitiers sans lactose, 16 Poulet et dinde, 17 Boeuf, 18 Saucisses, 19 Bacon, 20 Porc et jambon, 21 Substituts de viande, 22 Poisson et fruits de mer, 23 Autres viandes, 25 Pâtes et nouilles, 26 Riz et couscous, 27 Haricots secs, lentilles et pois, 28 Céréales et déjeuner, 29 Aliments en conserve, 30 Articles de cuisson (farine, sucre, levure), 32 Miels, sirops et tartinades, 33 Huile et vinaigre, 34 Condiments et sauces, 35 Épices et assaisonnements, 44 Pain, 46 Petits pains, 51 Pains plats et tortillas, 53 Fruits et légumes surgelés, 54 Viande et poisson surgelés, 62 Soupes et bouillons";
 
+// Définitions des restrictions, pour que l'IA les applique de la même façon partout.
+const DIET_RULES = `Définitions des restrictions : vegetarien = ni viande, ni volaille, ni poisson, ni fruits de mer, ni bouillon de viande ;
+sans_gluten = aucun blé, orge, seigle, épeautre, ni produit qui en contient (pâtes, pain, farine de blé, sauce soya ordinaire, chapelure) ;
+sans_noix = aucune noix ni arachide, ni beurre ou huile de noix ;
+sans_lactose = aucun lait, crème, beurre, fromage, yogourt ni autre produit laitier (les boissons végétales sont permises) ;
+diabetique = convient à une personne diabétique : aucun sucre ni sirop ajouté en quantité notable, glucides modérés (environ 60 g ou moins par portion), féculents en portion raisonnable, de préférence avec des fibres et des protéines.`;
+
 // ---------- Tâches ----------
 
 // Au plus 4 recettes par demande : les quotas gratuits limitent les jetons par minute.
@@ -96,7 +103,7 @@ Règles :
 - "display" : obligatoire, la quantité telle qu'on l'écrit dans une recette (ex. « 2 gousses d'ail », « 500 g de bœuf haché »).
 - "kcal" et "protein" : estimation par portion.
 - "gourmand" : true si c'est un plat riche et réconfortant.
-- "diets" : sous-ensemble de ${JSON.stringify(DIETS.map((d) => d.id))} qui s'appliquent vraiment.
+- "diets" : sous-ensemble de ${JSON.stringify(DIETS.map((d) => d.id))} qui s'appliquent vraiment. ${DIET_RULES}
 - "dish_en" : courte description du plat en anglais, pour générer une photo.
 - N'utilise pas ces recettes déjà existantes : ${avoid}.
 Réponds uniquement en JSON :
@@ -157,7 +164,7 @@ Pour chaque recette, dans le même ordre :
   Corrige les incohérences (ex. une étape qui parle de viande alors que la recette n'en contient pas, un ingrédient nommé autrement que dans la liste).
   Ne nomme jamais de chef, de restaurant, de site ni de livre.
 - "kcal" et "protein" : estimation par portion. "gourmand" : true si c'est un plat riche et réconfortant.
-- "diets" : sous-ensemble de ${JSON.stringify(DIETS.map((d) => d.id))} qui s'appliquent vraiment.
+- "diets" : sous-ensemble de ${JSON.stringify(DIETS.map((d) => d.id))} qui s'appliquent vraiment. ${DIET_RULES}
 - "dish_en" : courte description du plat en anglais, pour générer une photo.
 Recettes :
 ${JSON.stringify(p.recipes.map((r) => ({ name: r.name, servings: r.servings, ingredients: r.ingredients, steps: r.steps })))}
@@ -177,6 +184,43 @@ Réponds uniquement en JSON :
     }
     await saveRecipe(env, r, src.cuisine, src.meal);
   }
+}
+
+/** Ajoute les restrictions « sans lactose » et « diabétique » aux recettes existantes (lot de recettes). */
+const NEW_DIETS = ["sans_lactose", "diabetique"];
+async function tagDiets(env: Env, p: { ids: string[] }) {
+  const rows = await env.DB.prepare(`SELECT id, name, ingredients, kcal, diets FROM recipes WHERE id IN (${p.ids.map(() => "?").join(",")})`)
+    .bind(...p.ids).all<{ id: string; name: string; ingredients: string; kcal: number; diets: string }>();
+  if (!rows.results.length) return;
+  const list = rows.results.map((r) => ({
+    id: r.id, name: r.name, kcal: r.kcal,
+    ingredients: (JSON.parse(r.ingredients) as { name: string; qty: number; unit: string; display?: string }[]).map((i) => i.display ?? `${i.qty} ${i.unit} ${i.name}`),
+  }));
+  const prompt = `Pour chaque recette (pour 4 portions), indique si elle est « sans_lactose » et si elle convient à une personne « diabetique ».
+${DIET_RULES}
+Sois prudent : en cas de doute, réponds false.
+Recettes : ${JSON.stringify(list)}
+Réponds uniquement en JSON : {"recipes":[{"id":"","sans_lactose":false,"diabetique":false}]}`;
+  const out = await generateJson(env, prompt, (x: any): x is { recipes: { id: string; sans_lactose: boolean; diabetique: boolean }[] } =>
+    Array.isArray(x?.recipes) && x.recipes.every((r: any) => typeof r?.id === "string" && typeof r.sans_lactose === "boolean" && typeof r.diabetique === "boolean"));
+  const stmts = [];
+  for (const r of rows.results) {
+    const a = out.recipes.find((x) => x.id === r.id);
+    if (!a) continue;
+    const diets = (JSON.parse(r.diets) as string[]).filter((d) => !NEW_DIETS.includes(d));
+    if (a.sans_lactose) diets.push("sans_lactose");
+    if (a.diabetique) diets.push("diabetique");
+    stmts.push(env.DB.prepare("UPDATE recipes SET diets = ? WHERE id = ?").bind(JSON.stringify(diets), r.id));
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+}
+
+/** Met en file le classement de toutes les recettes (par lots de 12). */
+export async function enqueueDietTagging(env: Env) {
+  const rows = await env.DB.prepare("SELECT id FROM recipes ORDER BY created_at").all<{ id: string }>();
+  let jobs = 0;
+  for (let i = 0; i < rows.results.length; i += 12) { await enqueue(env, "tag_diets", { ids: rows.results.slice(i, i + 12).map((r) => r.id) }); jobs++; }
+  return { recipes: rows.results.length, jobs };
 }
 
 async function ensureIngredient(env: Env, name: string) {
@@ -306,10 +350,11 @@ async function refreshPrices(env: Env, p: { offset: number }) {
 // ---------- Exécution ----------
 
 // Sous-requêtes maximales estimées par tâche (forfait gratuit : 50 par exécution).
-const COST: Record<string, number> = { gen_recipes: 5, import_recipes: 5, resolve_ingredient: 8, retry_terms: 3, gen_image: 3, refresh_prices: REFRESH_BATCH + 1 };
+const COST: Record<string, number> = { gen_recipes: 5, import_recipes: 5, tag_diets: 3, resolve_ingredient: 8, retry_terms: 3, gen_image: 3, refresh_prices: REFRESH_BATCH + 1 };
 const HANDLERS: Record<string, (env: Env, p: any) => Promise<void>> = {
   gen_recipes: genRecipes,
   import_recipes: importRecipes,
+  tag_diets: tagDiets,
   resolve_ingredient: resolveIngredient,
   retry_terms: retryTerms,
   gen_image: genImage,
@@ -323,7 +368,7 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKin
   // Les ingrédients d'abord : une recette n'est utilisable que lorsque ses ingrédients ont un prix.
   const jobs = await env.DB.prepare(
     `SELECT * FROM jobs WHERE status = 'queued' AND run_after <= ? AND (?2 IS NULL OR kind = ?2)
-     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'import_recipes' THEN 2 WHEN 'gen_recipes' THEN 3 ELSE 4 END,
+     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'import_recipes' THEN 2 WHEN 'tag_diets' THEN 2 WHEN 'gen_recipes' THEN 3 ELSE 4 END,
        -- Recettes : d'abord les combinaisons cuisine + repas qui en ont le moins (banque équilibrée)
        CASE kind WHEN 'gen_recipes' THEN (SELECT COUNT(*) FROM recipes r WHERE r.cuisine = json_extract(jobs.payload, '$.cuisine') AND r.meal = json_extract(jobs.payload, '$.meal')) ELSE 0 END,
        id LIMIT 100`,

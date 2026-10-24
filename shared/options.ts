@@ -45,6 +45,8 @@ export const DIETS = [
   { id: "vegetarien", label: "Végétarien" },
   { id: "sans_gluten", label: "Sans gluten" },
   { id: "sans_noix", label: "Sans noix" },
+  { id: "sans_lactose", label: "Sans lactose" },
+  { id: "diabetique", label: "Diabétique" }, // peu de sucres ajoutés, glucides modérés (ne remplace pas un avis médical)
 ] as const;
 
 // Seuils des étiquettes nutritionnelles (par portion). Ajustables.
@@ -67,7 +69,9 @@ export type DietId = (typeof DIETS)[number]["id"];
 export type Unit = "g" | "ml" | "unite";
 
 export interface PlanRequest {
-  store: StoreId;
+  store: StoreId; // première épicerie choisie (affichage, compatibilité)
+  stores?: StoreId[]; // toutes les épiceries choisies ; chaque article est acheté là où il coûte le moins
+  specialsOnly?: boolean; // menu bâti avec les produits en spécial cette semaine
   meals: MealId[];
   weeks: number;
   people: number;
@@ -118,6 +122,7 @@ export interface ListItem {
   total: number;
   discounted: boolean;
   estimated?: boolean; // prix d'une autre bannière (le plus élevé), faute de relevé dans celle-ci
+  store?: StoreId; // épicerie où acheter cet article (plusieurs épiceries choisies)
   section: string;
 }
 

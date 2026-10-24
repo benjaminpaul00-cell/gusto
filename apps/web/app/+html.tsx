@@ -114,7 +114,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="theme-color" content="#2B44FF" />
         {/* Validation de propriété AdSense : simple balise, aucun témoin (le script pub attend le consentement) */}
         {process.env.EXPO_PUBLIC_ADSENSE_CLIENT ? <meta name="google-adsense-account" content={process.env.EXPO_PUBLIC_ADSENSE_CLIENT} /> : null}
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta property="og:site_name" content="Gusto" />
         <meta property="og:image" content="/og.png" />

@@ -1,21 +1,19 @@
 // Gabarit HTML unique pour le PDF : utilisé sur le web (impression) et sur mobile (expo-print).
-// Identité Gusto : cobalt, citron, rose, marine ; logo vectoriel (aucune image externe nécessaire).
+// Identité Gusto : cobalt, citron, rose, marine ; logo « mon gusto » chargé depuis le site.
 import { MEALS, STORES, type ListItem, type PlanResponse } from "../../../../shared/options";
-import { G, TAG, WORD, WORD_BOX } from "../components/logoPaths";
 
 type Plan = Extract<PlanResponse, { ok: true }>;
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const money = (n: number) => n.toLocaleString("fr-CA", { style: "currency", currency: "CAD" });
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-const LOGO = `<svg class="logo" viewBox="0 0 ${66 + 14 + WORD_BOX.width} 66" xmlns="http://www.w3.org/2000/svg" aria-label="Gusto">
-  <g transform="rotate(-10 32 32)"><path d="${TAG}" fill="#0E1030" transform="translate(2.5 3)"/><path d="${TAG}" fill="#2B44FF"/>
-  <circle cx="16.5" cy="32" r="4" fill="#FF5FA2"/><path d="${G}" fill="#fff"/></g>
-  <g transform="translate(80 ${33 - (WORD_BOX.top + WORD_BOX.bottom) / 2})"><path d="${WORD}" fill="#0E1030"/></g>
-</svg>`;
+const SITE = (process.env.EXPO_PUBLIC_SITE_URL || "https://mongusto.ca").replace(/\/$/, "");
+const LOGO = `<img class="logo" src="${SITE}/logo.png" alt="mon gusto">`;
 
 export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean }): string {
-  const store = STORES.find((s) => s.id === plan.request.store)?.label ?? plan.request.store;
+  const storeName = (id: string) => STORES.find((s) => s.id === id)?.label ?? id;
+  const names = (plan.request.stores?.length ? plan.request.stores : [plan.request.store]).map(storeName);
+  const store = names.length > 1 ? `${names.slice(0, -1).join(", ")} et ${names[names.length - 1]}` : names[0];
   const people = `${plan.request.people} personne${plan.request.people > 1 ? "s" : ""}`;
   const weeks = `${plan.weeks.length} semaine${plan.weeks.length > 1 ? "s" : ""}`;
   const parts: string[] = [];
@@ -47,7 +45,15 @@ export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean
     for (const w of plan.weeks) {
       parts.push(`<section class="block page"><h2>Liste d’épicerie${plan.weeks.length > 1 ? ` · semaine ${w.week}` : ""} <span class="sum">${money(w.total)}</span></h2>
         ${w.estimated ? '<p class="note">Estimation au prix régulier : les rabais de cette semaine ne sont pas encore publiés.</p>' : ""}
-        <table class="list">${rows(w.list)}</table>
+        ${(() => {
+          // Plusieurs épiceries : une liste par magasin, avec son sous-total
+          const used = STORES.map((x) => x.id as string).filter((id) => w.list.some((i) => i.store === id));
+          if (used.length <= 1) return `<table class="list">${rows(w.list)}</table>`;
+          return used.map((id) => {
+            const items = w.list.filter((i) => i.store === id);
+            return `<h3>Chez ${esc(storeName(id))} · ${money(items.reduce((n, i) => n + i.total, 0))}</h3><table class="list">${rows(items)}</table>`;
+          }).join("");
+        })()}
         ${w.pantry.length ? `<h3>À vérifier dans ton garde-manger</h3><p class="note">${w.pantryIncluded === false ? "Non inclus dans le total : on suppose que tu les as déjà." : "Déjà inclus dans le total. Retire ce que tu as déjà."}</p><table class="list">${rows(w.pantry)}</table>` : ""}
         ${w.specialty.length ? `<h3>À acheter dans une épicerie spécialisée</h3><p class="note">Prix maximal estimé.</p><table class="list">${rows(w.specialty)}</table>` : ""}
       </section>`);
@@ -83,7 +89,7 @@ export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean
   @page{margin:14mm}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   body{font-family:"Plus Jakarta Sans",-apple-system,"Segoe UI",Roboto,sans-serif;color:#0E1030;font-size:10.5pt;line-height:1.5;margin:0}
-  .logo{height:34px}
+  .logo{height:56px;width:auto}
   header{border-bottom:3px solid #0E1030;padding-bottom:14px;margin-bottom:8px}
   .head{display:flex;justify-content:space-between;align-items:flex-end;margin-top:14px}
   h1{font-size:28pt;line-height:1.05;margin:2px 0 0;font-weight:800;letter-spacing:-1px}

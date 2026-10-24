@@ -64,7 +64,10 @@ function Menu() {
   }
 
   const w = plan.weeks[week - 1];
-  const store = label(STORES, plan.request.store);
+  // Une ou plusieurs épiceries : « Maxi » ou « Maxi et Super C »
+  const storeIds = plan.request.stores?.length ? plan.request.stores : [plan.request.store];
+  const storeNames = storeIds.map((id) => label(STORES, id));
+  const store = storeNames.length > 1 ? `${storeNames.slice(0, -1).join(", ")} et ${storeNames[storeNames.length - 1]}` : storeNames[0];
   const mealsCount = plan.weeks.reduce((n, x) => n + x.days.reduce((m, d) => m + d.meals.length, 0), 0);
 
   return (
@@ -198,7 +201,12 @@ function MealCard({ r, meal, onPress, s, t }: { r: RecipeView; meal: string; onP
 }
 
 function GroceryList({ w, checked, setChecked, s, t }: { w: Plan["weeks"][number]; checked: Record<string, boolean>; setChecked: (f: (c: Record<string, boolean>) => Record<string, boolean>) => void; s: Styles; t: Theme }) {
-  const block = (title: string | null, items: ListItem[], note?: string) => {
+  // Plusieurs épiceries : la liste est séparée par magasin (chaque article là où il coûte le moins)
+  const storesUsed = STORES.map((x) => x.id as string).filter((id) => w.list.some((i) => i.store === id) || w.pantry.some((i) => i.store === id));
+  const multi = storesUsed.length > 1;
+  let showStore = false;
+  const block = (title: string | null, items: ListItem[], note?: string, withStore = false) => {
+    showStore = withStore;
     if (!items.length) return null;
     let section = "";
     return (
@@ -216,7 +224,7 @@ function GroceryList({ w, checked, setChecked, s, t }: { w: Plan["weeks"][number
                 <View style={[s.box, on && { backgroundColor: t.primary, borderColor: t.primary }]}>{on ? <Text style={{ color: t.onPrimary, fontSize: 13 }}>✓</Text> : null}</View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.itemName, on && { textDecorationLine: "line-through", color: t.muted }]}>{i.packages} × {i.product}</Text>
-                  <Text style={s.itemMeta}>{i.size}{i.discounted ? "  " : ""}{i.discounted ? <Text style={{ color: t.sale, fontFamily: font.semibold }}>rabais</Text> : null}{i.estimated ? <Text style={{ color: t.muted, fontFamily: font.semibold }}>  prix estimé</Text> : null}</Text>
+                  <Text style={s.itemMeta}>{i.size}{showStore && i.store ? ` · chez ${label(STORES, i.store)}` : ""}{i.discounted ? "  " : ""}{i.discounted ? <Text style={{ color: t.sale, fontFamily: font.semibold }}>rabais</Text> : null}{i.estimated ? <Text style={{ color: t.muted, fontFamily: font.semibold }}>  prix estimé</Text> : null}</Text>
                 </View>
                 <Text style={s.itemPrice}>{money(i.total)}</Text>
               </Pressable>
@@ -229,8 +237,14 @@ function GroceryList({ w, checked, setChecked, s, t }: { w: Plan["weeks"][number
   return (
     <View>
       {w.estimated ? <Text style={s.note}>Estimation au prix régulier : les rabais de cette semaine ne sont pas encore publiés.</Text> : null}
-      {block(null, w.list)}
-      {block("À vérifier dans ton garde-manger", w.pantry, w.pantryIncluded === false ? "Non inclus dans le total : on suppose que tu les as déjà. Achète seulement ce qui te manque." : "Déjà inclus dans le total. Retire ce que tu as déjà et économise d’autant.")}
+      {multi
+        ? storesUsed.map((id) => {
+            const items = w.list.filter((i) => i.store === id);
+            const sub = items.reduce((n, i) => n + i.total, 0);
+            return <View key={id}>{block(`Chez ${label(STORES, id)} · ${money(sub)}`, items, items.length ? undefined : undefined)}</View>;
+          })
+        : block(null, w.list)}
+      {block("À vérifier dans ton garde-manger", w.pantry, w.pantryIncluded === false ? "Non inclus dans le total : on suppose que tu les as déjà. Achète seulement ce qui te manque." : "Déjà inclus dans le total. Retire ce que tu as déjà et économise d’autant.", multi)}
       {block("À acheter dans une épicerie spécialisée", w.specialty, "Prix estimé : le total compte le haut de la fourchette.")}
     </View>
   );

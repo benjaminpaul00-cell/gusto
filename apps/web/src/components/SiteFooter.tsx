@@ -4,7 +4,7 @@ import { RECIPES_URL } from "../recipesUrl";
 import { Mail, Megaphone } from "lucide-react-native";
 import { Linking, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
 import { font, r, space, WIDE } from "../theme";
-import { LogoMark, Wordmark } from "./Logo";
+import { Logo } from "./Logo";
 
 const NAVY = "#0E1030";
 export const CONTACT_EMAIL = "info@mongusto.ca";
@@ -60,10 +60,7 @@ export function SiteFooter() {
       <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), paddingTop: space(16) }}>
         <View {...r("stack-md")} style={{ flexDirection: "row", gap: space(16), justifyContent: "space-between" }}>
           <View style={{ maxWidth: 360, gap: space(5) }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
-              <LogoMark size={44} variant="lemon" />
-              <Wordmark height={27} color="#FFFFFF" />
-            </View>
+            <Logo size={46} inverse />
             <Text style={{ fontFamily: font.medium, fontSize: 15.5, lineHeight: 25, color: "#B9BEE6" }}>
               Des menus et des listes d’épicerie au prix de ton épicerie, sans jamais dépasser ton budget. Gratuit, sans compte, fait au Québec.
             </Text>
@@ -86,10 +83,10 @@ export function SiteFooter() {
           </Text>
         </View>
       </View>
-      {/* Grand logo qui déborde en bas de page */}
-      <View aria-hidden style={{ alignItems: "center", marginTop: space(10), marginBottom: -40, opacity: 0.95 }}>
-        <View style={{ width: "92%", maxWidth: WIDE, aspectRatio: 172 / 58 }}>
-          <Wordmark fill color="#2B44FF" />
+      {/* Grand logo en bas de page */}
+      <View aria-hidden style={{ alignItems: "center", marginTop: space(12), marginBottom: space(10), opacity: 0.95 }}>
+        <View style={{ width: "70%", maxWidth: 420 }}>
+          <Logo width="100%" inverse />
         </View>
       </View>
     </View>

@@ -6,7 +6,7 @@ import type { PlanRequest } from "../../shared/options";
 const products = new Map<string, StoreProduct[]>();
 const ingredients = new Map<string, IngredientInfo>();
 const addProduct = (name: string, price: number, sizeQty: number, sizeUnit: "g" | "ml" | "unite", section: string, opts: Partial<IngredientInfo> = {}, regular?: number) => {
-  products.set(name, [...(products.get(name) ?? []), { ingredient: name, productName: name.toUpperCase(), sizeQty, sizeUnit, price, regularPrice: regular ?? price, discounted: regular !== undefined }]);
+  products.set(name, [...(products.get(name) ?? []), { ingredient: name, store: "maxi", productName: name.toUpperCase(), sizeQty, sizeUnit, price, regularPrice: regular ?? price, discounted: regular !== undefined }]);
   ingredients.set(name, { name, section, pantry: false, unitWeightG: null, homemade: null, specialty: null, ...opts });
 };
 
@@ -122,6 +122,32 @@ if (res.ok) {
     const names = r8.weeks.flatMap((w) => w.days.flatMap((d) => d.meals.map((m) => m.recipeId)));
     assert.equal(new Set(names).size, names.length, "aucune recette répétée");
     console.log("✔ 14 repas, 14 plats différents");
+  }
+}
+// 9. Plusieurs épiceries : chaque article vient de la bannière la moins chère
+{
+  const multi = new Map<string, StoreProduct[]>([...products].map(([k, v]) => [k, [...v]]));
+  multi.get("riz")!.push({ ingredient: "riz", store: "superc", productName: "RIZ SUPER C", sizeQty: 2000, sizeUnit: "g", price: 2.5, regularPrice: 2.5, discounted: false });
+  const r9 = planMenu({ ...base, stores: ["maxi", "superc"], weeks: 1 }, { ...data, products: multi }, () => null);
+  assert.ok(r9.ok);
+  if (r9.ok) {
+    const riz = r9.weeks[0].list.find((i) => i.ingredient === "riz");
+    assert.equal(riz?.store, "superc", "le riz vient de Super C, moins cher");
+    assert.equal(r9.weeks[0].list.find((i) => i.ingredient === "oignon")?.store, "maxi");
+    console.log("✔ plusieurs épiceries : riz chez Super C, oignons chez Maxi");
+  }
+}
+// 10. Spéciaux : les recettes au poulet en rabais passent devant
+{
+  const mix: PlannerRecipe[] = Array.from({ length: 16 }, (_, k) => k % 2
+    ? R("poulet-" + k, "quebecoise", [{ name: "poulet", qty: 500 + k * 10, unit: "g" }, { name: "riz", qty: 200, unit: "g" }])
+    : R("lentilles-" + k, "quebecoise", [{ name: "lentilles", qty: 300 + k * 10, unit: "g" }, { name: "oignon", qty: 1, unit: "unite" }]));
+  const r10 = planMenu({ ...base, weeks: 1, specialsOnly: true, budget: 400 }, { ...data, recipes: mix }, () => null);
+  assert.ok(r10.ok);
+  if (r10.ok) {
+    const ids = r10.weeks[0].days.flatMap((d) => d.meals.map((m) => m.recipeId));
+    assert.ok(ids.every((id) => id.startsWith("poulet")), "seulement des recettes au poulet (en rabais) : " + ids.join(", "));
+    console.log("✔ spéciaux : menu bâti avec le poulet en rabais");
   }
 }
 console.log("Tous les tests passent.");
