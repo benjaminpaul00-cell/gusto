@@ -38,8 +38,10 @@ DAILY_PLAN_LIMIT = "200"
 # Modèles (modifiables sans toucher au code si un fournisseur change ses offres gratuites)
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
-JOB_BUDGET = "400" # forfait Workers Paid (1 000 sous-requêtes) ; remettre 40 au forfait gratuit
-MISTRAL_MODEL = "mistral-large-latest,mistral-small-latest"
+JOB_PARALLEL = "6"
+JOB_BUDGET = "850" # forfait Workers Paid (1 000 sous-requêtes, photos comprises) ; remettre 40 au forfait gratuit
+MISTRAL_MODEL = "mistral-medium-latest,mistral-small-latest" # mistral-large : non inclus au forfait gratuit
+WORKERS_AI_TEXT_FALLBACK = "1" # forfait Workers Paid : IA de Cloudflare en dernier recours pour le texte
 GROQ_MODEL = "openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b"
 WORKERS_AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 WORKERS_AI_IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"

@@ -1,7 +1,7 @@
 import { CUISINES, DIETS, MEALS, STORES, STYLES, type PlanRequest } from "../../shared/options";
 import { checkRateLimit, enqueue, loadPlannerData, type Env } from "./db";
 import { getImage } from "./images";
-import { cleanup, runJobs, savePrices, seed } from "./jobs";
+import { cleanup, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
 import type { StoreMatch } from "./epiceries";
 import { planMenu } from "./planner";
 import { imagePrompt, mistralImage } from "./ai";
@@ -141,6 +141,17 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
   }
   if (req.method !== "POST") return new Response("Méthode non permise", { status: 405 });
 
+  // Recueil de recettes (scripts/importer-recueil.mjs) : { recipes: BookRecipe[] }, mis en file par 2
+  if (path === "/admin/import" && req.method === "POST") {
+    const body: any = await req.json().catch(() => null);
+    const cuisines = new Set(CUISINES.map((c) => c.id as string));
+    const meals = new Set(MEALS.map((m) => m.id as string));
+    const list: BookRecipe[] = (Array.isArray(body?.recipes) ? body.recipes : []).filter((r: any) =>
+      typeof r?.name === "string" && cuisines.has(r.cuisine) && meals.has(r.meal) && Array.isArray(r.ingredients) && typeof r.steps === "string");
+    let jobs = 0;
+    for (let i = 0; i < list.length; i += 2) { await enqueue(env, "import_recipes", { recipes: list.slice(i, i + 2) }); jobs++; }
+    return json(env, { received: list.length, jobs });
+  }
   if (path === "/admin/seed") return json(env, { queued: await seed(env) });
   // Prix envoyés par scripts/prix.mjs : { items: [{ ingredient, matches: StoreMatch[] }] }
   if (path === "/admin/prices") {
@@ -205,9 +216,10 @@ export default {
       return;
     }
     // Photos à part : elles ne doivent pas attendre que toutes les recettes soient écrites.
-    // Photos d'abord (une partie du budget leur est réservée), puis le reste.
+    // Photos en même temps que le reste (une partie du budget leur est réservée).
     const budget = Number(env.JOB_BUDGET) || 40;
-    ctx.waitUntil(runJobs(env, Math.max(9, Math.round(budget / 5)), 30, "gen_image").then(() => runJobs(env, budget)));
+    const parallel = Number(env.JOB_PARALLEL) || 1;
+    ctx.waitUntil(Promise.all([runJobs(env, Math.min(90, Math.max(9, Math.round(budget / 5))), 30, "gen_image"), runJobs(env, budget, Infinity, undefined, parallel)]));
     // Une fois par jour (vers 4 h au Québec) : effacer les compteurs anti-abus de la veille,
     // comme l'annonce la politique de confidentialité.
     const t = new Date(event.scheduledTime);

@@ -110,6 +110,15 @@ Réponds uniquement en JSON :
     if (seen.has(canon(r.name))) continue; // doublon
     if (r.ingredients.length < 5 || r.steps.length < 4) continue; // recette trop sommaire
     seen.add(canon(r.name));
+    await saveRecipe(env, r, p.cuisine, p.meal);
+  }
+  // Le reste du lot est remis en file
+  if (job.count > p.count) await enqueue(env, "gen_recipes", { cuisine: job.cuisine, meal: job.meal, count: job.count - p.count });
+}
+
+/** Enregistre une recette, ajoute ses nouveaux ingrédients et met sa photo en file. */
+async function saveRecipe(env: Env, r: AiRecipe, cuisine: string, meal: string) {
+  {
     const id = `${slug(r.name)}-${crypto.randomUUID().slice(0, 6)}`;
     const ingredients = r.ingredients.map((i) => {
       const name = canon(i.name);
@@ -120,18 +129,54 @@ Réponds uniquement en JSON :
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
-        id, r.name, p.cuisine, p.meal,
+        id, r.name, cuisine, meal,
         JSON.stringify(computeStyles(r.kcal, r.protein, !!r.gourmand)),
         JSON.stringify((r.diets ?? []).filter((d) => DIETS.some((x) => x.id === d))),
         r.servings || 4, JSON.stringify(ingredients), JSON.stringify(r.steps), r.kcal, r.protein,
-        imagePrompt(r.dish_en || r.name, label(CUISINES, p.cuisine)), now(),
+        imagePrompt(r.dish_en || r.name, label(CUISINES, cuisine)), now(),
       )
       .run();
     for (const i of ingredients) await ensureIngredient(env, i.name);
     await enqueue(env, "gen_image", { recipeId: id });
   }
-  // Le reste du lot est remis en file
-  if (job.count > p.count) await enqueue(env, "gen_recipes", { cuisine: job.cuisine, meal: job.meal, count: job.count - p.count });
+}
+
+/** Recette d'un recueil fourni (scripts/lire-recueil.mjs), mise au format de Gusto par l'IA. */
+export interface BookRecipe { name: string; cuisine: string; meal: string; servings: number; ingredients: string[]; steps: string }
+
+async function importRecipes(env: Env, p: { recipes: BookRecipe[] }) {
+  const prompt = `Tu reçois ${p.recipes.length} recette(s) d'un recueil, à mettre au format d'une application de menus au Québec.
+Pour chaque recette, dans le même ordre :
+- "name" : garde le nom du plat, avec une majuscule initiale. Retire un suffixe de pays (« - Mexique ») et toute mention de chef.
+- "ingredients" : reprends TOUS les ingrédients et leurs quantités, pour ${"le nombre de portions indiqué"}.
+  "name" : nom générique au singulier, en minuscules, sans quantité, sans préparation (ex. « 150 g d'oignon haché » → « oignon jaune » ; « 450 g de bœuf haché » → « bœuf haché » ; « 2 g de sel fin, facultatif » → « sel »).
+  "unit" : uniquement "g", "ml" ou "unite" (convertis : 1 c. à soupe = 15 ml, 1 c. à thé = 5 ml, 1 tasse = 250 ml ; « 1 oignon » → 1 unite).
+  "display" : la ligne telle qu'elle s'affiche dans la recette (ex. « 150 g d'oignon haché »).
+  Ingrédient utilisé dans les étapes mais absent de la liste : ajoute-le.
+- "steps" : 4 à 8 étapes claires et précises (températures, durées, gestes), RÉÉCRITES dans tes propres mots, sans numéro au début.
+  Corrige les incohérences (ex. une étape qui parle de viande alors que la recette n'en contient pas, un ingrédient nommé autrement que dans la liste).
+  Ne nomme jamais de chef, de restaurant, de site ni de livre.
+- "kcal" et "protein" : estimation par portion. "gourmand" : true si c'est un plat riche et réconfortant.
+- "diets" : sous-ensemble de ${JSON.stringify(DIETS.map((d) => d.id))} qui s'appliquent vraiment.
+- "dish_en" : courte description du plat en anglais, pour générer une photo.
+Recettes :
+${JSON.stringify(p.recipes.map((r) => ({ name: r.name, servings: r.servings, ingredients: r.ingredients, steps: r.steps })))}
+Réponds uniquement en JSON :
+{"recipes":[{"name":"","gourmand":false,"diets":[],"servings":4,"ingredients":[{"name":"","qty":0,"unit":"g","display":""}],"steps":[""],"kcal":0,"protein":0,"dish_en":""}]}`;
+
+  const out = await generateJson(env, prompt, (x: any): x is { recipes: AiRecipe[] } => isRecipes(x) && x.recipes.length === p.recipes.length);
+  for (let i = 0; i < p.recipes.length; i++) {
+    const src = p.recipes[i];
+    const r = { ...out.recipes[i], name: capitalize(out.recipes[i].name || src.name), servings: src.servings || 4 };
+    if (r.ingredients.length < 3 || r.steps.length < 2) continue;
+    // Même plat déjà généré par l'IA : la version du recueil le remplace
+    const dups = await env.DB.prepare("SELECT id, image_key FROM recipes WHERE cuisine = ? AND lower(name) = ?").bind(src.cuisine, canon(r.name)).all<{ id: string; image_key: string | null }>();
+    for (const d of dups.results) {
+      await env.DB.prepare("DELETE FROM recipes WHERE id = ?").bind(d.id).run();
+      if (d.image_key) await deleteImage(env, d.image_key);
+    }
+    await saveRecipe(env, r, src.cuisine, src.meal);
+  }
 }
 
 async function ensureIngredient(env: Env, name: string) {
@@ -261,9 +306,10 @@ async function refreshPrices(env: Env, p: { offset: number }) {
 // ---------- Exécution ----------
 
 // Sous-requêtes maximales estimées par tâche (forfait gratuit : 50 par exécution).
-const COST: Record<string, number> = { gen_recipes: 5, resolve_ingredient: 14, retry_terms: 3, gen_image: 3, refresh_prices: REFRESH_BATCH + 1 };
+const COST: Record<string, number> = { gen_recipes: 5, import_recipes: 5, resolve_ingredient: 8, retry_terms: 3, gen_image: 3, refresh_prices: REFRESH_BATCH + 1 };
 const HANDLERS: Record<string, (env: Env, p: any) => Promise<void>> = {
   gen_recipes: genRecipes,
+  import_recipes: importRecipes,
   resolve_ingredient: resolveIngredient,
   retry_terms: retryTerms,
   gen_image: genImage,
@@ -271,13 +317,13 @@ const HANDLERS: Record<string, (env: Env, p: any) => Promise<void>> = {
 };
 
 /** Traite les tâches en file. `maxJobs` limite la durée quand quelqu'un attend la réponse (/admin/run). */
-export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKind?: string) {
+export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKind?: string, parallel = 1) {
   const deadline = Date.now() + 8 * 60_000;
   const done: string[] = [];
   // Les ingrédients d'abord : une recette n'est utilisable que lorsque ses ingrédients ont un prix.
   const jobs = await env.DB.prepare(
     `SELECT * FROM jobs WHERE status = 'queued' AND run_after <= ? AND (?2 IS NULL OR kind = ?2)
-     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'gen_recipes' THEN 2 ELSE 3 END,
+     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'import_recipes' THEN 2 WHEN 'gen_recipes' THEN 3 ELSE 4 END,
        -- Recettes : d'abord les combinaisons cuisine + repas qui en ont le moins (banque équilibrée)
        CASE kind WHEN 'gen_recipes' THEN (SELECT COUNT(*) FROM recipes r WHERE r.cuisine = json_extract(jobs.payload, '$.cuisine') AND r.meal = json_extract(jobs.payload, '$.meal')) ELSE 0 END,
        id LIMIT 100`,
@@ -286,7 +332,12 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKin
     .all<{ id: number; kind: string; payload: string; attempts: number }>();
 
   const limited = new Set<string>(); // genres de tâches qui viennent d'atteindre une limite : inutile d'insister
-  for (const job of jobs.results) {
+  const queue = [...jobs.results];
+  let stop = false;
+  // Plusieurs tâches à la fois (« parallel ») : l'IA met du temps à répondre, pas à accepter les demandes.
+  const worker = async () => {
+  while (!stop && queue.length) {
+    const job = queue.shift()!;
     if (limited.has(job.kind)) continue;
     const cost = COST[job.kind] ?? 10;
     if (cost > budget) continue;
@@ -306,8 +357,10 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKin
         .bind(attempts, String((e as Error).message).slice(0, 500), now() + delay, attempts >= 5 ? "failed" : "queued", job.id)
         .run();
     }
-    if (budget < 3 || done.length >= maxJobs || Date.now() > deadline) break;
+    if (budget < 3 || done.length >= maxJobs || Date.now() > deadline) stop = true;
   }
+  };
+  await Promise.all(Array.from({ length: parallel }, worker));
   return done;
 }
 

@@ -15,6 +15,8 @@ export interface Env {
   GEMINI_IMAGE_MODEL: string;
   MISTRAL_API_KEY?: string;
   MISTRAL_MODEL: string;
+  WORKERS_AI_TEXT_FALLBACK?: string; // "1" : IA de Cloudflare en dernier recours pour le texte (forfait payant)
+  JOB_PARALLEL?: string; // tâches menées en même temps par passage
   JOB_BUDGET?: string; // sous-requêtes par passage (40 au forfait gratuit)
   GROQ_API_KEY?: string;
   GROQ_MODEL: string;

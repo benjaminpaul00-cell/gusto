@@ -46,14 +46,14 @@ async function openAiCompatible(url: string, key: string, model: string, prompt:
   return data.choices?.[0]?.message?.content ?? "";
 }
 
-/** Réessaie après une limite par seconde (429), deux fois au plus, avec une attente croissante. */
+/** Réessaie une fois après une limite par seconde (429) ; ensuite, le fournisseur suivant prend le relais. */
 async function withRetry(call: () => Promise<string>): Promise<string> {
   for (let i = 0; ; i++) {
     try {
       return await call();
     } catch (e) {
-      if (i >= 2 || !/ 429 /.test((e as Error).message)) throw e;
-      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+      if (i >= 1 || !/ 429 /.test((e as Error).message)) throw e;
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
     }
   }
 }
@@ -65,6 +65,14 @@ async function workersAiText(env: Env, prompt: string): Promise<string> {
   });
   return typeof out?.response === "string" ? out.response : JSON.stringify(out?.response ?? out);
 }
+
+/** Fournisseurs mis de côté (jusqu'à quand), pour ne pas les réessayer à chaque tâche. Mémoire de l'instance seulement. */
+const PAUSED = new Map<string, number>();
+const pauseFor = (msg: string) =>
+  / 40[34] /.test(msg) ? 6 * 3600_000 // modèle refusé (forfait) ou retiré
+  : / 429 /.test(msg) && /per day|TPD|daily/i.test(msg) ? 30 * 60_000 // quota du jour
+  : / 429 /.test(msg) ? 20_000 // limite par seconde ou par minute
+  : 0;
 
 /** Demande du JSON à l'IA en essayant chaque fournisseur configuré, dans l'ordre. */
 export async function generateJson<T>(env: Env, prompt: string, validate: (x: any) => x is T): Promise<T> {
@@ -79,18 +87,23 @@ export async function generateJson<T>(env: Env, prompt: string, validate: (x: an
   if (env.GROQ_API_KEY)
     for (const model of env.GROQ_MODEL.split(",").map((m) => m.trim()).filter(Boolean))
       providers.push([`groq:${model}`, () => openAiCompatible("https://api.groq.com/openai/v1/chat/completions", env.GROQ_API_KEY!, model, prompt)]);
-  // L'IA de Cloudflare ne sert de secours que si aucun autre fournisseur n'est configuré :
-  // son quota gratuit quotidien est réservé aux photos des plats.
-  if (!providers.length) providers.push(["workers-ai", () => workersAiText(env, prompt)]);
+  // L'IA de Cloudflare en dernier recours : toujours au forfait Workers Paid (WORKERS_AI_TEXT_FALLBACK = "1", facturé à l'usage,
+  // quelques sous par lot), sinon seulement si aucun autre fournisseur n'est configuré (quota gratuit gardé pour les photos).
+  if (!providers.length || env.WORKERS_AI_TEXT_FALLBACK === "1") providers.push(["workers-ai", () => workersAiText(env, prompt)]);
 
   const errors: string[] = [];
   for (const [name, call] of providers) {
+    const until = PAUSED.get(name) ?? 0;
+    if (until > Date.now() && name !== "workers-ai") { errors.push(`${name}: en pause`); continue; }
     try {
       const parsed = extractJson(await call());
       if (validate(parsed)) return parsed;
       errors.push(`${name}: format invalide`);
     } catch (e) {
-      errors.push(`${name}: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      errors.push(`${name}: ${msg}`);
+      const pause = pauseFor(msg);
+      if (pause) PAUSED.set(name, Date.now() + pause);
     }
   }
   throw new AllProvidersFailed(errors.join(" | "));
@@ -150,14 +163,12 @@ export async function mistralImage(env: Env, prompt: string): Promise<{ bytes: U
 /** Génère une image de plat. Cloudflare Workers AI d'abord, puis Gemini si une clé est configurée. */
 export async function generateImage(env: Env, prompt: string): Promise<{ bytes: Uint8Array; type: string }> {
   const errors: string[] = [];
-  // Mistral d'abord (FLUX Ultra, bien plus beau). Limite atteinte : on réessaie plus tard plutôt que de
-  // mélanger les styles de photos. Autre panne : l'IA de Cloudflare prend le relais.
+  // Mistral d'abord (FLUX Ultra, bien plus beau). Limite atteinte ou panne : l'IA de Cloudflare prend le relais.
   if (env.MISTRAL_API_KEY) {
     try {
       return await mistralImage(env, prompt);
     } catch (e) {
       const msg = (e as Error).message;
-      if (/ 429 /.test(msg)) throw new AllProvidersFailed(`mistral: ${msg}`);
       errors.push(`mistral: ${msg}`);
     }
   }
