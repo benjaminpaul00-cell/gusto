@@ -9,6 +9,8 @@
   "main": "site-worker.js",
   // Garder l'ancienne adresse active : elle redirige vers mongusto.ca
   "workers_dev": true,
+  // L'API (pages de recettes), appelée directement sans passer par Internet
+  "services": [{ "binding": "API", "service": "gusto-api" }],
   "routes": [
     { "pattern": "mongusto.ca", "custom_domain": true },
     { "pattern": "www.mongusto.ca", "custom_domain": true }

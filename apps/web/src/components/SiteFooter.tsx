@@ -1,5 +1,6 @@
 // Pied de page : de vrais liens <a> (utiles aux visiteurs et à Google) et un grand logo final.
 import { Link } from "expo-router";
+import { RECIPES_URL } from "../recipesUrl";
 import { Mail, Megaphone } from "lucide-react-native";
 import { Linking, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
 import { font, r, space, WIDE } from "../theme";
@@ -33,6 +34,7 @@ const COLUMNS = [
     { href: "/a-propos", label: "À propos" },
   ] },
   { title: "Ressources", links: [
+    { href: RECIPES_URL, label: "Recettes" },
     { href: "/guides", label: "Guides" },
     { href: "/cuisines", label: "Cuisines" },
     { href: "/guides/epicerie-petit-budget", label: "Épicerie à petit budget" },

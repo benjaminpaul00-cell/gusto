@@ -5,8 +5,10 @@ import { View } from "react-native";
 import { font, r, space, useTheme, WIDE } from "../theme";
 import { Logo } from "./Logo";
 import { Button } from "./ui";
+import { RECIPES_URL } from "../recipesUrl";
 
 const NAV = [
+  { href: RECIPES_URL, label: "Recettes" },
   { href: "/#comment", label: "Comment ça marche" },
   { href: "/guides", label: "Guides" },
   { href: "/cuisines", label: "Cuisines" },

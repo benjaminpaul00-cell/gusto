@@ -121,6 +121,7 @@ cd apps/web && npm run web                             # EXPO_PUBLIC_API_URL=htt
 
 - Web : AdSense, chargé seulement après le consentement aux témoins (Loi 25). Remplacez l’identifiant dans `apps/web/public/ads.txt`.
 - Domaine : mongusto.ca (acheté chez Cloudflare). Le site est branché par `routes` dans `apps/web/wrangler.jsonc` ; `apps/web/site-worker.js` redirige www et l’ancienne adresse vers https://mongusto.ca.
+- **Pages de recettes** : `/recettes`, `/recettes/<cuisine>` et `/recettes/<id>` sont rendues par `apps/web/site-worker.js` à partir de l'API (`GET /api/recipes`, `GET /api/recipes/<id>`, liaison de service « API »), avec le coût par portion dans les 6 bannières et une fiche schema.org « Recipe ». Gardées 1 h en cache (augmenter `CACHE_VERSION` dans site-worker.js, ou `RECIPES_CACHE_VERSION` dans l'API, pour vider ce cache). `/sitemap.xml` y ajoute toutes les recettes.
 - Le site est généré en pages HTML statiques avec du contenu indexable : `/guides` (7 guides), `/cuisines` (12 pages), `/a-propos`, `/confidentialite`. `npm run build:web` produit aussi `sitemap.xml` et `robots.txt`. Soumettez `sitemap.xml` dans Google Search Console avant de demander l’approbation AdSense.
 - Apps : AdMob, à brancher dans `src/components/AdSlot.tsx` au moment de créer les apps.
 
