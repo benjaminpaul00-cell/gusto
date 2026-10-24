@@ -205,7 +205,9 @@ export default {
       return;
     }
     // Photos à part : elles ne doivent pas attendre que toutes les recettes soient écrites.
-    ctx.waitUntil(runJobs(env).then(() => runJobs(env, 9, 3, "gen_image")));
+    // Photos d'abord (une partie du budget leur est réservée), puis le reste.
+    const budget = Number(env.JOB_BUDGET) || 40;
+    ctx.waitUntil(runJobs(env, Math.max(9, Math.round(budget / 5)), 30, "gen_image").then(() => runJobs(env, budget)));
     // Une fois par jour (vers 4 h au Québec) : effacer les compteurs anti-abus de la veille,
     // comme l'annonce la politique de confidentialité.
     const t = new Date(event.scheduledTime);

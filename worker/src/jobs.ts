@@ -1,5 +1,6 @@
 // Tâches d'arrière-plan, exécutées par les déclencheurs Cron (voir wrangler.toml).
-// Chaque exécution traite quelques tâches en respectant la limite de sous-requêtes du forfait gratuit.
+// Chaque exécution traite des tâches dans la limite de sous-requêtes (JOB_BUDGET : 40 au forfait gratuit, plus au forfait payant)
+// et s'arrête après 8 minutes pour ne jamais chevaucher le passage suivant (toutes les 10 minutes).
 
 import { CUISINES, DIETS, MEALS, type Unit } from "../../shared/options";
 import { AllProvidersFailed, generateImage, generateJson, imagePrompt } from "./ai";
@@ -271,6 +272,7 @@ const HANDLERS: Record<string, (env: Env, p: any) => Promise<void>> = {
 
 /** Traite les tâches en file. `maxJobs` limite la durée quand quelqu'un attend la réponse (/admin/run). */
 export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKind?: string) {
+  const deadline = Date.now() + 8 * 60_000;
   const done: string[] = [];
   // Les ingrédients d'abord : une recette n'est utilisable que lorsque ses ingrédients ont un prix.
   const jobs = await env.DB.prepare(
@@ -278,7 +280,7 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKin
      ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'gen_recipes' THEN 2 ELSE 3 END,
        -- Recettes : d'abord les combinaisons cuisine + repas qui en ont le moins (banque équilibrée)
        CASE kind WHEN 'gen_recipes' THEN (SELECT COUNT(*) FROM recipes r WHERE r.cuisine = json_extract(jobs.payload, '$.cuisine') AND r.meal = json_extract(jobs.payload, '$.meal')) ELSE 0 END,
-       id LIMIT 20`,
+       id LIMIT 100`,
   )
     .bind(now(), onlyKind ?? null)
     .all<{ id: number; kind: string; payload: string; attempts: number }>();
@@ -304,7 +306,7 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKin
         .bind(attempts, String((e as Error).message).slice(0, 500), now() + delay, attempts >= 5 ? "failed" : "queued", job.id)
         .run();
     }
-    if (budget < 3 || done.length >= maxJobs) break;
+    if (budget < 3 || done.length >= maxJobs || Date.now() > deadline) break;
   }
   return done;
 }
