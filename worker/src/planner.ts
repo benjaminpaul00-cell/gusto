@@ -265,6 +265,15 @@ const CUISINE_NOUN: Record<string, string> = {
   indienne: "cuisine indienne", marocaine: "cuisine marocaine", thailandaise: "cuisine thaïlandaise", portugaise: "cuisine portugaise",
   venezuelienne: "cuisine vénézuélienne", colombienne: "cuisine colombienne", peruvienne: "cuisine péruvienne", dominicaine: "cuisine dominicaine",
 };
+// Familles de cuisines : l'appoint vient d'abord des cuisines voisines de celles choisies.
+const FAMILIES: string[][] = [
+  ["haitienne", "dominicaine", "venezuelienne", "colombienne", "peruvienne", "mexicaine"],
+  ["chinoise", "vietnamienne", "thailandaise", "indienne"],
+  ["grecque", "libanaise", "italienne", "marocaine", "portugaise"],
+  ["quebecoise", "portugaise", "italienne"],
+];
+const closeness = (chosen: readonly string[], c: string) =>
+  chosen.includes(c) ? 0 : FAMILIES.some((f) => f.includes(c) && chosen.some((x) => f.includes(x))) ? 1 : 2;
 const joinFr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
 /** « cuisine vénézuélienne et cuisine colombienne » ou « vénézuéliennes et colombiennes » */
 function cuisineList(ids: readonly string[], form: "noun" | "adj" = "noun") {
@@ -313,7 +322,9 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
     // Moins de 4 plats différents : on complète avec d'autres cuisines plutôt que de répéter le même plat
     const names = new Set(pool.map((r) => normalize(r.recipe.name)));
     if (names.size < 4) {
-      const extra = eligible(meal, null, true).filter((r) => !pool.includes(r) && !names.has(normalize(r.recipe.name)));
+      const extra = eligible(meal, null, true)
+        .filter((r) => !pool.includes(r) && !names.has(normalize(r.recipe.name)))
+        .sort((a, b) => closeness(req.cuisines, a.recipe.cuisine) - closeness(req.cuisines, b.recipe.cuisine));
       if (extra.length) {
         pool = [...pool, ...extra.slice(0, Math.max(0, 6 - names.size) * 3)];
         if (!notices.some((n) => n.startsWith("Pour varier"))) notices.push("Pour varier ton menu, nous avons ajouté quelques recettes d’autres cuisines, le temps que ta sélection s’enrichisse.");
@@ -375,7 +386,8 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
   };
   let pantryOwned = false;
   let total = costPlan(slots, data, req.weeks).total;
-  const reduce = (strict: boolean) => {
+  // maxPerWeek = nombre maximal de fois le même plat dans une semaine
+  const reduce = (maxPerWeek: number) => {
     for (let round = 0; round < 12 && total > target; round++) {
       const weekCount = new Map<string, number>();
       const periodCount = new Map<string, number>();
@@ -395,8 +407,10 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         const inWeek = (r: Resolved) => (weekCount.get(`${s.week}|${dish(r)}`) ?? 0) - (dish(r) === dish(s.r) ? 1 : 0);
         const inPeriod = (r: Resolved) => (periodCount.get(dish(r)) ?? 0) - (dish(r) === dish(s.r) ? 1 : 0);
         const distinct = new Set(pools.get(s.meal)!.map(dish)).size;
-        const cap = strict ? Math.max(2, Math.ceil(7 / Math.max(1, distinct))) : Infinity;
-        const rank = (r: Resolved) => (r.recipe.cuisine === s.r.recipe.cuisine ? 0 : 3) + (inPeriod(r) === 0 ? 0 : inWeek(r) < 2 ? 1 : 2);
+        const cap = Math.max(maxPerWeek, Math.ceil(7 / Math.max(1, distinct)));
+        // Cuisines choisies d'abord, puis même cuisine que le plat remplacé, puis plats peu servis
+        const chosenFirst = (r: Resolved) => ((req.cuisines as readonly string[]).includes(r.recipe.cuisine) ? 0 : 4);
+        const rank = (r: Resolved) => chosenFirst(r) + (r.recipe.cuisine === s.r.recipe.cuisine ? 0 : 1) + (inPeriod(r) === 0 ? 0 : inWeek(r) < 2 ? 1 : 2);
         let best: Resolved | null = null;
         let bestKey = Infinity;
         for (const r of pools.get(s.meal)!) {
@@ -420,18 +434,20 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       total = costPlan(slots, data, req.weeks, pantryOwned).total;
     }
   };
-  reduce(true);
+  // Ordre des ajustements : la variété passe avant tout le reste.
+  reduce(2);
   if (total > target) {
-    // Budget serré : on accepte que certains plats reviennent plus souvent
-    reduce(false);
-    notices.push("Pour respecter ton budget, certains plats reviennent plus souvent dans la semaine.");
-  }
-  if (total > target) {
-    // Budget très serré : on suppose d'abord que le sel, l'huile et les épices sont déjà à la maison
+    // 1. Le garde-manger (sel, huile, épices…) est supposé déjà à la maison : la variété est préservée
     pantryOwned = true;
     total = costPlan(slots, data, req.weeks, true).total;
-    reduce(false);
+    reduce(2);
     notices.push("Ton budget suppose que tu as déjà le garde-manger (sel, huile, épices…) : ces articles sont listés à part, sans être comptés.");
+  }
+  if (total > target) {
+    // 2. Un même plat peut revenir 3, puis au plus 4 fois dans la semaine (jamais plus)
+    reduce(3);
+    if (total > target) reduce(4);
+    notices.push("Pour respecter ton budget, certains plats reviennent plus souvent dans la semaine.");
   }
   if (total > target) {
     // Budget très serré : on laisse libres les repas les plus chers, par paquets, jusqu'à passer sous le budget.

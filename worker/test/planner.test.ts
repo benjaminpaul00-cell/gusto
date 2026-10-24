@@ -56,6 +56,11 @@ for (const budget of [150, 120, 100, 90, 80, 70, 60, 40, 20]) {
   if (res.ok) {
     assert.ok(res.total <= res.target, `budget ${budget}: ${res.total} > ${res.target}`);
     const n = res.weeks.reduce((a, w) => a + w.days.reduce((b, d) => b + d.meals.length, 0), 0);
+    for (const w of res.weeks) {
+      const counts = new Map<string, number>();
+      for (const d of w.days) for (const m of d.meals) counts.set(m.recipeId, (counts.get(m.recipeId) ?? 0) + 1);
+      assert.ok(Math.max(0, ...counts.values()) <= 4, `budget ${budget} : un plat revient plus de 4 fois dans la semaine`);
+    }
     console.log(`✔ budget ${budget} $ → ${res.total} $, ${n} repas${res.notices ? " (avis : " + res.notices.length + ")" : ""}`);
   }
 }
