@@ -5,16 +5,16 @@ import type { Block } from "../src/content/types";
 import { useConsent } from "../src/consent";
 import { font, radius, space, useTheme } from "../src/theme";
 
-// ─── À REMPLIR AVANT LE LANCEMENT ───────────────────────────────────────────
-// Loi 25 : la personne responsable de la protection des renseignements personnels
-// est, par défaut, la personne ayant la plus haute autorité (ici, vous). Son titre
-// et ses coordonnées doivent être publiés.
+// ─── Personne responsable ───────────────────────────────────────────────────
+// Loi 25 : le titre et les coordonnées de la personne responsable de la protection des
+// renseignements personnels doivent être publiés ; le nom n'est pas obligatoire.
+// Remplissez « nom » pour l'afficher aussi.
 const RESPONSABLE = {
-  nom: "[Votre nom]",
+  nom: "",
   titre: "Responsable de la protection des renseignements personnels",
   courriel: "corticalabs@yahoo.com",
 };
-const MISE_A_JOUR = "23 octobre 2026";
+const MISE_A_JOUR = "24 octobre 2026";
 // Faites relire ce texte par une personne qualifiée avant le lancement.
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ export default function Privacy() {
       <Blocks blocks={AFTER} cta={false} ads={false} />
       <Text role="heading" aria-level={2} style={{ fontFamily: font.display, fontSize: 30, lineHeight: 36, color: t.ink, marginTop: space(12) }}>Personne responsable</Text>
       <Text style={{ fontFamily: font.body, color: t.ink, fontSize: 18, lineHeight: 31, marginTop: space(4) }}>
-        {`${RESPONSABLE.nom}, ${RESPONSABLE.titre}\n${RESPONSABLE.courriel}`}
+        {`${RESPONSABLE.nom ? `${RESPONSABLE.nom}, ` : ""}${RESPONSABLE.titre} de Gusto\nCourriel : ${RESPONSABLE.courriel}`}
       </Text>
     </Page>
   );

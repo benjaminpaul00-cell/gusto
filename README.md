@@ -134,4 +134,4 @@ Le code est déjà compatible. Les exports utilisent automatiquement `expo-print
 - **Prix dépendants d’un ordinateur** tant qu’épiceries.ca n’autorise pas l’API (voir « Prix »). Sans mise à jour, les derniers prix connus restent utilisés.
 - **Valeurs nutritives estimées par l’IA.** Elles servent aux étiquettes « Protéiné » et « Léger ».
 - **Prix par bannière, pas par succursale.** La marge de 5 % absorbe les écarts habituels.
-- **Politique de confidentialité à compléter** : remplissez la constante `RESPONSABLE` en haut de `apps/web/app/confidentialite.tsx` (nom et courriel), puis faites relire le texte.
+- **Politique de confidentialité** : la personne responsable est affichée par son titre et son courriel (`RESPONSABLE` dans `apps/web/app/confidentialite.tsx`) ; un nom peut y être ajouté. Faites relire le texte par une personne qualifiée.
