@@ -4,7 +4,6 @@ import { getImage } from "./images";
 import { cleanup, enqueueDietTagging, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
 import type { StoreMatch } from "./epiceries";
 import { planMenu } from "./planner";
-import { getRecipe, listRecipes } from "./recipes";
 import { imagePrompt, mistralImage } from "./ai";
 
 const json = (env: Env, body: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -49,21 +48,6 @@ async function handlePlan(req: Request, env: Env): Promise<Response> {
   const base = env.PUBLIC_API_URL.replace(/\/$/, "");
   const result = planMenu(request, data, (r) => (r.image ? `${base}/img/${r.image}` : null));
   return json(env, result, result.ok ? 200 : result.reason === "invalid" ? 400 : 200);
-}
-
-const RECIPES_CACHE_VERSION = "2";
-
-/** Réponse servie depuis le cache de Cloudflare si elle y est, sinon calculée puis gardée. */
-async function cached(req: Request, env: Env, make: () => Promise<Response>): Promise<Response> {
-  const cache = (caches as any).default as Cache;
-  const u = new URL(req.url);
-  u.searchParams.set("__v", RECIPES_CACHE_VERSION); // à augmenter pour vider ce cache après un changement
-  const key = new Request(u.toString(), { method: "GET" });
-  const hit = await cache.match(key);
-  if (hit) return hit;
-  const res = await make();
-  if (res.status === 200 || res.status === 404) await cache.put(key, res.clone());
-  return res;
 }
 
 async function handleImage(key: string, env: Env): Promise<Response> {
@@ -226,12 +210,6 @@ const app = {
 
     try {
       if (path === "/api/plan" && req.method === "POST") return await handlePlan(req, env);
-      // Recettes publiques (pages /recettes du site), gardées 1 h dans le cache de Cloudflare
-      if (req.method === "GET" && (path === "/api/recipes" || path.startsWith("/api/recipes/"))) return await cached(req, env, async () => {
-        if (path === "/api/recipes") return json(env, await listRecipes(env), 200, { "Cache-Control": "public, max-age=3600" });
-        const r = await getRecipe(env, decodeURIComponent(path.slice("/api/recipes/".length)));
-        return r ? json(env, r, 200, { "Cache-Control": "public, max-age=3600" }) : json(env, { ok: false, message: "Introuvable" }, 404, { "Cache-Control": "public, max-age=300" });
-      });
       if (path === "/api/health") return json(env, { ok: true });
       if (path.startsWith("/img/")) return await handleImage(decodeURIComponent(path.slice(5)), env);
       if (path.startsWith("/admin/")) return await handleAdmin(req, env, path);

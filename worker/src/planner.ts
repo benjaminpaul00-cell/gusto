@@ -576,13 +576,3 @@ function scaleDisplay(i: RecipeIngredient, factor: number): string {
   return `${nice}${unit} ${i.name}`.trim();
 }
 
-/**
- * Coût d'une recette par portion dans une bannière (prix de la semaine), pour les pages publiques de recettes.
- * null si un ingrédient est introuvable et impossible à remplacer.
- */
-export function recipeCost(recipe: PlannerRecipe, data: PlannerData): { perPortion: number; estimated: boolean; homemade: string[]; specialty: string[] } | null {
-  const r = resolveRecipe(recipe, recipe.servings, data, false);
-  if (!r) return null;
-  const estimated = r.specialty.length > 0 || r.needs.some((n) => n.source === "store" && data.products.get(n.ingredient)?.[0]?.estimated);
-  return { perPortion: round2(approxCost(r, data, 1) / recipe.servings), estimated, homemade: r.homemade, specialty: r.specialty };
-}
