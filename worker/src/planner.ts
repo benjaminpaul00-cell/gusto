@@ -334,8 +334,16 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       const timesInWeek = (r: Resolved) => slots.filter((o, j) => j !== i && o.week === s.week && dish(o.r) === dish(r)).length;
       // … et jamais le même plat que la veille ou le lendemain (même repas)
       const neighbor = (r: Resolved) => slots.some((o) => o.week === s.week && o.meal === s.meal && Math.abs(o.day - s.day) === 1 && dish(o.r) === dish(r));
-      const varied = cheaper.filter((x) => timesInWeek(x.r) < 2 && !neighbor(x.r));
-      if (varied.length) cheaper.splice(0, cheaper.length, ...varied, ...cheaper.filter((x) => !varied.includes(x)));
+      // Limite stricte : au plus 2 fois le même plat par semaine (plus seulement s'il n'y a pas assez de plats différents).
+      // Mieux vaut annoncer un budget minimum réaliste que servir 7 fois la même recette.
+      const distinct = new Set(pools.get(s.meal)!.map(dish)).size;
+      const cap = Math.max(2, Math.ceil(7 / Math.max(1, distinct)));
+      const allowed = cheaper.filter((x) => timesInWeek(x.r) < cap);
+      cheaper.splice(0, cheaper.length, ...allowed);
+      // Ordre de préférence : plats jamais servis sur la période, puis peu servis, puis le reste (toujours du moins cher au plus cher)
+      const timesInPeriod = (r: Resolved) => slots.filter((o, j) => j !== i && dish(o.r) === dish(r)).length;
+      const rank = (x: { r: Resolved }) => (timesInPeriod(x.r) === 0 ? 0 : timesInWeek(x.r) < 2 && !neighbor(x.r) ? 1 : 2);
+      cheaper.sort((a, b) => rank(a) - rank(b) || a.c - b.c);
       for (const cand of cheaper) {
         const old = s.r;
         s.r = cand.r;

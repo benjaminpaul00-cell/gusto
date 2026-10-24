@@ -23,11 +23,15 @@ export const CUISINES = [
   { id: "grecque", label: "Grecque" },
   { id: "libanaise", label: "Libanaise" },
   { id: "italienne", label: "Italienne" },
-  { id: "mexicaine", label: "Mexicaine" },
+  { id: "mexicaine", label: "Centraméricaine" }, // Mexique, Guatemala, Salvador…
   { id: "indienne", label: "Indienne" },
   { id: "marocaine", label: "Marocaine" },
   { id: "thailandaise", label: "Thaïlandaise" },
   { id: "portugaise", label: "Portugaise" },
+  { id: "venezuelienne", label: "Vénézuélienne" },
+  { id: "colombienne", label: "Colombienne" },
+  { id: "peruvienne", label: "Péruvienne" },
+  { id: "dominicaine", label: "Dominicaine" },
 ] as const;
 
 export const STYLES = [

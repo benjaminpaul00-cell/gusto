@@ -96,4 +96,16 @@ if (res.ok) {
     console.log("✔ petit format choisi pour une petite quantité (4,99 $ au lieu de 30 $)");
   }
 }
+// 8. Variété : avec assez de recettes, aucune répétition sur la période (2 semaines → 14 plats différents)
+{
+  const many: PlannerRecipe[] = Array.from({ length: 16 }, (_, k) =>
+    R(`plat-${k}`, k % 2 ? "quebecoise" : "haitienne", [{ name: "riz", qty: 200 + k * 10, unit: "g" }, { name: "oignon", qty: 1, unit: "unite" }]));
+  const r8 = planMenu({ ...base, weeks: 2, budget: 400 }, { ...data, recipes: many }, () => null);
+  assert.ok(r8.ok);
+  if (r8.ok) {
+    const names = r8.weeks.flatMap((w) => w.days.flatMap((d) => d.meals.map((m) => m.recipeId)));
+    assert.equal(new Set(names).size, names.length, "aucune recette répétée");
+    console.log("✔ 14 repas, 14 plats différents");
+  }
+}
 console.log("Tous les tests passent.");

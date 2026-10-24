@@ -12,6 +12,15 @@ const label = (list: readonly { id: string; label: string }[], id: string) => li
 const slug = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
 // Au Québec : déjeuner = matin, dîner = midi, souper = soir.
+// Précisions envoyées à l'IA pour certaines cuisines
+const CUISINE_HINT: Record<string, string> = {
+  mexicaine: "Mexique, Guatemala, Salvador et le reste de l'Amérique centrale",
+  venezuelienne: "Venezuela",
+  colombienne: "Colombie",
+  peruvienne: "Pérou",
+  dominicaine: "République dominicaine",
+};
+
 const MEAL_HINT: Record<string, string> = {
   dejeuner: "déjeuner, c'est-à-dire le repas du MATIN au Québec : œufs, crêpes, gruau, pain doré, sandwichs-déjeuner, bols du matin, ou les plats du matin de cette cuisine",
   diner: "dîner, c'est-à-dire le repas du MIDI au Québec : plat principal complet du midi (soupe-repas, salade-repas, sandwich garni, bol, plat chaud)",
@@ -67,8 +76,12 @@ async function genRecipes(env: Env, job: { cuisine: string; meal: string; count:
   const existing = await env.DB.prepare("SELECT name FROM recipes WHERE cuisine = ?").bind(p.cuisine).all<{ name: string }>();
   const avoid = existing.results.map((r) => r.name).slice(-120).join("; ") || "aucune";
 
-  const prompt = `Tu es un chef québécois qui crée des recettes économiques pour des familles au Québec.
-Crée ${p.count} recettes de cuisine ${label(CUISINES, p.cuisine)} pour le ${MEAL_HINT[p.meal] ?? p.meal}.
+  const prompt = `Tu es un chef de grand talent qui crée des recettes pour des familles au Québec.
+Crée ${p.count} recettes de cuisine ${label(CUISINES, p.cuisine)}${CUISINE_HINT[p.cuisine] ? ` (${CUISINE_HINT[p.cuisine]})` : ""} pour le ${MEAL_HINT[p.meal] ?? p.meal}.
+Niveau attendu : qualité restaurant, inspirée des plats emblématiques et des techniques des chefs les plus réputés de cette cuisine
+(assaisonnement juste, cuissons précises, textures et garnitures soignées, une touche qui fait la différence),
+mais réalisable à la maison avec un budget familial. Écris tout dans tes propres mots.
+Ne nomme jamais de chef, de restaurant ni de livre, et ne dis pas que la recette vient d'un chef.
 Règles :
 - Chaque recette est un REPAS COMPLET qui nourrit 4 personnes. Jamais de dessert, de boisson, de sauce ou d'accompagnement seul.
 - "name" : nom du plat en français, avec une majuscule initiale (ex. « Poulet au beurre », « Soupe aux pois »).

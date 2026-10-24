@@ -223,7 +223,7 @@ function LogoMarquee({ t }: { t: Theme }) {
 function Stats({ t }: { t: Theme }) {
   const items = [
     { n: 6, suffix: "", label: "épiceries comparées", tone: 0 },
-    { n: 12, suffix: "", label: "cuisines du monde", tone: 1 },
+    { n: CUISINES.length, suffix: "", label: "cuisines du monde", tone: 1 },
     { n: 95, suffix: " %", label: "du budget visé, jamais plus", tone: 2 },
     { n: 0, suffix: " $", label: "pour l’utiliser, toujours", tone: 0 },
   ];
@@ -368,7 +368,7 @@ function CuisinesGrid({ t }: { t: Theme }) {
     <Section>
       <View {...r("stack-sm")} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", gap: space(6) }}>
         <View style={{ flex: 1 }}>
-          <View {...r("reveal")}><Eyebrow tone="cobalt">Douze cuisines</Eyebrow></View>
+          <View {...r("reveal")}><Eyebrow tone="cobalt">{`${CUISINES.length} cuisines`}</Eyebrow></View>
           <View {...r("reveal", "d1")}><H2 accent="épiceries d’ici.">Le monde entier, avec les </H2></View>
         </View>
         <View {...r("reveal", "d2")}><Button label="Toutes les cuisines" variant="secondary" href="/cuisines" icon={ArrowRight} /></View>
@@ -430,12 +430,12 @@ function GuidesTeaser({ t }: { t: Theme }) {
 // ─── FAQ ────────────────────────────────────────────────────────────────────
 
 const FAQ = [
-  ["Est-ce vraiment gratuit ?", "Oui. Gusto est financé par la publicité, affichée seulement si tu acceptes les témoins publicitaires. Il n’y a ni abonnement, ni version payante."],
-  ["D’où viennent les prix ?", "D’épiceries.ca, un comparateur indépendant qui suit les prix en ligne de Maxi, Super C, IGA, Metro, Provigo et Walmart. Les prix sont mis à jour chaque jeudi, quand les nouvelles circulaires sortent. Ils sont relevés par bannière et peuvent varier un peu selon ta succursale."],
-  ["Pourquoi mon total est-il plus bas que mon budget ?", "Gusto vise environ 95 % de ton budget. Cette marge absorbe les petits écarts de prix entre les succursales, pour que tu ne dépasses jamais le montant prévu à la caisse."],
-  ["Dois-je créer un compte ?", "Non. Gusto ne demande ni nom, ni courriel. Tes choix et ton dernier menu restent sur ton appareil. Tu peux exporter ton menu en PDF ou l’ajouter à ton calendrier."],
-  ["Les recettes conviennent-elles aux allergies ?", "Tu peux demander des recettes végétariennes, sans gluten ou sans noix. En cas d’allergie, vérifie toujours les étiquettes des produits que tu achètes : les recettes sont générées automatiquement et ne remplacent pas cette vérification."],
-  ["Qui écrit les recettes ?", "Les recettes et les photos des plats sont générées par intelligence artificielle, puis vérifiées automatiquement. Les valeurs nutritives sont des estimations."],
+  ["Est-ce que Gusto est vraiment gratuit ?", "Oui, entièrement. Il n’y a ni abonnement, ni version payante, ni frais cachés."],
+  ["Comment Gusto respecte-t-il mon budget ?", "Tu choisis un montant, et Gusto compose ton menu et ta liste d’épicerie pour rester en dessous. Chaque article est compté comme à la caisse, au format que tu achèteras vraiment. Si ton budget est trop serré pour tes choix, Gusto te le dit et te propose un montant réaliste."],
+  ["Les prix sont-ils à jour ?", "Oui, ils suivent les prix de ta bannière et sont mis à jour chaque semaine, rabais compris. Ils peuvent varier légèrement d’une succursale à l’autre."],
+  ["Dois-je créer un compte ?", "Non. Aucune inscription n’est nécessaire. Ton menu reste sur ton appareil, et tu peux l’imprimer en PDF ou l’ajouter à ton calendrier à la date de ton choix."],
+  ["Puis-je adapter le menu à mes restrictions ?", "Oui : végétarien, sans gluten ou sans noix. En cas d’allergie, lis toujours les étiquettes des produits que tu achètes."],
+  ["Puis-je planifier plus d’une semaine ?", "Oui, jusqu’à quatre semaines, avec une liste d’épicerie pour chacune et des plats variés d’une semaine à l’autre."],
 ] as const;
 
 function Faq({ t }: { t: Theme }) {

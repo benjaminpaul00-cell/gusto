@@ -12,13 +12,14 @@ import {
 } from "../../../../shared/options";
 import { requestPlan } from "../api";
 import { CUISINE_PAGES } from "../content/cuisines";
-import { loadForm, saveForm, savePlan } from "../storage";
+import { saveForm, savePlan } from "../storage";
 import { StoreLogo } from "../stores";
 import { font, money, r, radius, space, useTheme, type Theme } from "../theme";
 import { Button } from "./ui";
 
 type Icon = ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-const DEFAULT: PlanRequest = { store: "maxi", meals: ["souper"], weeks: 1, people: 4, cuisines: [], styles: ["normal"], diets: [], budget: 0, onlyStore: false };
+// Rien n'est choisi d'avance : c'est l'utilisateur qui répond à chaque question.
+const DEFAULT: PlanRequest = { store: "" as StoreId, meals: [], weeks: 0, people: 0, cuisines: [], styles: [], diets: [], budget: 0, onlyStore: false };
 const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 const TONES = ["#2B44FF", "#FF5FA2", "#FFE14D"];
 const MEAL_INFO: Record<MealId, { icon: Icon; hint: string }> = {
@@ -45,23 +46,16 @@ export function Wizard() {
   const [form, setForm] = useState<PlanRequest>(DEFAULT);
   const [i, setI] = useState(0);
   const [budgetText, setBudgetText] = useState("");
+  const [dietsChosen, setDietsChosen] = useState(false); // « Aucune » ou une restriction a été choisie
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; minBudget?: number } | null>(null);
   const top = useRef<any>(null);
   const step = STEPS[i];
 
-  useEffect(() => {
-    loadForm().then((f) => {
-      if (!f) return;
-      setForm({ ...DEFAULT, ...f });
-      if (f.budget) setBudgetText(String(f.budget));
-    });
-  }, []);
-
   const set = <K extends keyof PlanRequest>(k: K, v: PlanRequest[K]) => { setForm((f) => ({ ...f, [k]: v })); setError(null); };
   const valid: Record<Step, boolean> = {
-    store: true, meals: form.meals.length > 0, weeks: true, people: form.people > 0, cuisines: form.cuisines.length > 0,
-    styles: form.styles.length > 0, diets: true, budget: form.budget > 0, recap: true,
+    store: !!form.store, meals: form.meals.length > 0, weeks: form.weeks > 0, people: form.people > 0, cuisines: form.cuisines.length > 0,
+    styles: form.styles.length > 0, diets: dietsChosen, budget: form.budget > 0, recap: true,
   };
   const go = (n: number) => {
     setI(Math.max(0, Math.min(STEPS.length - 1, n)));
@@ -169,7 +163,7 @@ export function Wizard() {
                 <View style={{ alignItems: "center", gap: space(8), paddingVertical: space(4) }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: space(8) }}>
                     <Round icon={Minus} a11y="Une personne de moins" disabled={form.people <= 1} onPress={() => set("people", form.people - 1)} t={t} />
-                    <Text key={form.people} {...r("pop-in")} accessibilityLiveRegion="polite" style={{ fontFamily: font.display, fontSize: 120, lineHeight: 124, color: t.primary, minWidth: 150, textAlign: "center", fontVariant: ["tabular-nums"] }}>{form.people}</Text>
+                    <Text key={form.people} {...r("pop-in")} accessibilityLiveRegion="polite" style={{ fontFamily: font.display, fontSize: 120, lineHeight: 124, color: form.people ? t.primary : t.line, minWidth: 150, textAlign: "center", fontVariant: ["tabular-nums"] }}>{form.people || "?"}</Text>
                     <Round icon={Plus} a11y="Une personne de plus" disabled={form.people >= LIMITS.maxPeople} onPress={() => set("people", form.people + 1)} t={t} />
                   </View>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: space(2), maxWidth: 520 }} aria-hidden>
@@ -227,11 +221,11 @@ export function Wizard() {
             {step === "diets" && (
               <Q title="Des restrictions alimentaires ?" hint="Facultatif. En cas d’allergie, vérifie toujours les étiquettes." t={t}>
                 <Grid cols={4}>
-                  <Tile selected={form.diets.length === 0} onPress={() => pick("diets", [])} t={t} height={150}>
-                    <TileBody icon={Ban} title="Aucune" hint="Tout me va" tone={2} on={form.diets.length === 0} t={t} />
+                  <Tile selected={dietsChosen && form.diets.length === 0} onPress={() => { setDietsChosen(true); pick("diets", []); }} t={t} height={150}>
+                    <TileBody icon={Ban} title="Aucune" hint="Tout me va" tone={2} on={dietsChosen && form.diets.length === 0} t={t} />
                   </Tile>
                   {DIETS.map((d, k) => (
-                    <Tile key={d.id} selected={form.diets.includes(d.id)} onPress={() => set("diets", toggle(form.diets, d.id as DietId))} t={t} delay={k + 1} height={150}>
+                    <Tile key={d.id} selected={form.diets.includes(d.id)} onPress={() => { const next = toggle(form.diets, d.id as DietId); setDietsChosen(next.length > 0); set("diets", next); }} t={t} delay={k + 1} height={150}>
                       <TileBody icon={DIET_INFO[d.id]} title={d.label} tone={k} on={form.diets.includes(d.id)} t={t} />
                     </Tile>
                   ))}
@@ -287,7 +281,7 @@ export function Wizard() {
             : <View style={{ flex: 1 }}><Text {...r("hide-sm")} style={{ fontFamily: font.medium, fontSize: 13.5, color: t.muted }}>Appuie sur Entrée pour continuer</Text></View>}
           {step === "recap"
             ? <Button label="Créer mon menu" size="lg" variant="pink" icon={Sparkles} onPress={() => submit()} />
-            : <Button label={step === "diets" && form.diets.length === 0 ? "Passer" : "Continuer"} icon={ArrowRight} onPress={next} disabled={!valid[step]} />}
+            : <Button label="Continuer" icon={ArrowRight} onPress={next} disabled={!valid[step]} />}
         </View>
       )}
     </View>

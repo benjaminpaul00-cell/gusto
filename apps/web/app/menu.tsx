@@ -4,6 +4,7 @@ import Head from "expo-router/head";
 import { ArrowLeft, ArrowRight, CalendarDays, FileDown, ShoppingBasket, Utensils, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { DatePicker, longDate } from "../src/components/DatePicker";
 import { Screen } from "../src/components/Screen";
 import { Button, IconBadge } from "../src/components/ui";
 import { CUISINES, MEALS, STORES, type ListItem, type PlanResponse, type RecipeView } from "../../../shared/options";
@@ -255,17 +256,12 @@ function RecipeSheet({ r, onClose, s, t }: { r: RecipeView | null; onClose: () =
 
 function ExportSheet({ mode, plan, onClose, s, t }: { mode: "pdf" | "cal" | null; plan: Plan; onClose: () => void; s: Styles; t: Theme }) {
   const [what, setWhat] = useState<"list" | "recipes" | "both">("both");
-  const [start, setStart] = useState<"tomorrow" | "monday">("monday");
+  const [start, setStart] = useState<Date | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const startDate = () => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    if (start === "tomorrow") d.setDate(d.getDate() + 1);
-    else d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
-    return d;
-  };
+  // Dernier jour couvert par le menu (date de début + nombre de semaines)
+  const end = start ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + plan.weeks.length * 7 - 1) : null;
 
   async function run() {
     setBusy(true);
@@ -274,7 +270,8 @@ function ExportSheet({ mode, plan, onClose, s, t }: { mode: "pdf" | "cal" | null
       if (mode === "pdf") {
         await exportPdf(buildPdfHtml(plan, { list: what !== "recipes", recipes: what !== "list" }));
       } else {
-        const ics = buildIcs(plan, { start: startDate(), shopping: what !== "recipes", meals: what !== "list" });
+        if (!start) { setBusy(false); setMsg("Choisis d’abord la date de début de ton menu."); return; }
+        const ics = buildIcs(plan, { start, shopping: what !== "recipes", meals: what !== "list" });
         await saveFile("gusto-menu.ics", ics, "text/calendar");
         setMsg("Fichier téléchargé. Ouvre-le pour l’ajouter à ton calendrier.");
       }
@@ -291,28 +288,26 @@ function ExportSheet({ mode, plan, onClose, s, t }: { mode: "pdf" | "cal" | null
   return (
     <Modal visible={!!mode} animationType="fade" transparent onRequestClose={onClose}>
       <View style={s.sheetWrap}>
-        <View style={[s.sheet, { padding: space(5), gap: space(4), maxHeight: undefined }]}>
+        <ScrollView style={s.sheet} contentContainerStyle={{ padding: space(5), gap: space(4) }}>
           <Text style={s.h2}>{mode === "pdf" ? "Exporter en PDF" : "Ajouter à mon calendrier"}</Text>
           <View style={s.chips}>
             {options.map(([k, l]) => <Chip key={k} label={l} selected={what === k} onPress={() => setWhat(k as typeof what)} />)}
           </View>
           {mode === "cal" ? (
             <>
-              <Text style={s.cardMeta}>Commencer le menu</Text>
-              <View style={s.chips}>
-                <Chip label="Demain" selected={start === "tomorrow"} onPress={() => setStart("tomorrow")} />
-                <Chip label="Lundi prochain" selected={start === "monday"} onPress={() => setStart("monday")} />
-              </View>
+              <Text style={[s.cardMeta, { fontFamily: font.bold, color: t.ink }]}>Quand commence ton menu ?</Text>
+              <DatePicker value={start} onChange={(d) => { setStart(d); setMsg(null); }} />
+              <Text style={s.note}>{start && end ? `Du ${longDate(start)} au ${longDate(end)}.` : "Touche une date dans le calendrier."}</Text>
             </>
           ) : null}
           {msg ? <Text style={s.note}>{msg}</Text> : null}
           <View style={[s.chips, { justifyContent: "flex-end" }]}>
             <Pressable style={s.btn} onPress={onClose}><Text style={s.btnText}>Fermer</Text></Pressable>
-            <Pressable style={[s.btn, { backgroundColor: t.primary, borderColor: t.primary }]} onPress={run} disabled={busy}>
+            <Pressable style={[s.btn, { backgroundColor: t.primary, borderColor: t.primary, opacity: mode === "cal" && !start ? 0.4 : 1 }]} onPress={run} disabled={busy || (mode === "cal" && !start)}>
               <Text style={[s.btnText, { color: t.onPrimary }]}>{busy ? "Préparation…" : mode === "pdf" ? "Créer le PDF" : "Télécharger le calendrier"}</Text>
             </Pressable>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );

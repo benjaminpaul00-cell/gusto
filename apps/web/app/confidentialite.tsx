@@ -12,7 +12,7 @@ import { font, radius, space, useTheme } from "../src/theme";
 const RESPONSABLE = {
   nom: "[Votre nom]",
   titre: "Responsable de la protection des renseignements personnels",
-  courriel: "[votre courriel de contact]",
+  courriel: "corticalabs@yahoo.com",
 };
 const MISE_A_JOUR = "23 octobre 2026";
 // Faites relire ce texte par une personne qualifiée avant le lancement.

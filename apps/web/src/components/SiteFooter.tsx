@@ -1,10 +1,31 @@
 // Pied de page : de vrais liens <a> (utiles aux visiteurs et à Google) et un grand logo final.
 import { Link } from "expo-router";
-import { Text, View } from "react-native";
+import { Mail, Megaphone } from "lucide-react-native";
+import { Linking, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
 import { font, r, space, WIDE } from "../theme";
 import { LogoMark, Wordmark } from "./Logo";
 
 const NAVY = "#0E1030";
+export const CONTACT_EMAIL = "corticalabs@yahoo.com";
+const mailto = (subject: string) => `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}`;
+
+/** Carte de contact : un vrai lien « mailto: » (ouvre le logiciel de courriel du visiteur). */
+function ContactCard({ icon: IconC, tone, title, text, subject }: { icon: typeof Mail; tone: string; title: string; text: string; subject: string }) {
+  return (
+    <Pressable {...({ href: mailto(subject) } as any)} {...r("press")} accessibilityRole="link"
+      onPress={Platform.OS === "web" ? undefined : () => Linking.openURL(mailto(subject))}
+      style={{ flexGrow: 1, flexBasis: 300, padding: space(6), borderRadius: 22, backgroundColor: tone, borderWidth: 2.5, borderColor: NAVY, boxShadow: `5px 5px 0 ${NAVY}` } as any}>
+      <View style={{ gap: space(3) } as ViewStyle}>
+        <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: "#FFFFFF", borderWidth: 2, borderColor: NAVY, alignItems: "center", justifyContent: "center" }}>
+          <IconC size={22} color={NAVY} strokeWidth={2.25} />
+        </View>
+        <Text style={{ fontFamily: font.display, fontSize: 22, letterSpacing: -0.6, color: NAVY }}>{title}</Text>
+        <Text style={{ fontFamily: font.medium, fontSize: 15, lineHeight: 22, color: NAVY }}>{text}</Text>
+        <Text style={{ fontFamily: font.bold, fontSize: 15.5, color: NAVY, textDecorationLine: "underline" }}>{CONTACT_EMAIL}</Text>
+      </View>
+    </Pressable>
+  );
+}
 const COLUMNS = [
   { title: "Gusto", links: [
     { href: "/#planificateur", label: "Créer un menu" },
@@ -24,7 +45,17 @@ const COLUMNS = [
 export function SiteFooter() {
   return (
     <View role="contentinfo" style={{ backgroundColor: NAVY, overflow: "hidden" }}>
-      <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), paddingTop: space(20) }}>
+      {/* Nous joindre */}
+      <View nativeID="contact" {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), paddingTop: space(20) }}>
+        <Text role="heading" aria-level={2} style={{ fontFamily: font.display, fontSize: 40, lineHeight: 46, letterSpacing: -1.5, color: "#FFFFFF" }}>
+          Nous joindre<Text style={{ color: "#FFE14D" }}>.</Text>
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space(6), marginTop: space(8) }}>
+          <ContactCard icon={Mail} tone="#FFE14D" title={"Une question, un commentaire ?"} text={"Une idée pour améliorer Gusto, un problème avec ton menu ? Écris-nous, on lit tout."} subject="Question au sujet de Gusto" />
+          <ContactCard icon={Megaphone} tone="#FF5FA2" title="Annoncer sur Gusto" text={"Vous êtes une entreprise et souhaitez présenter vos produits aux familles qui planifient leur épicerie ? Parlons-en."} subject="Publicité sur Gusto" />
+        </View>
+      </View>
+      <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), paddingTop: space(16) }}>
         <View {...r("stack-md")} style={{ flexDirection: "row", gap: space(16), justifyContent: "space-between" }}>
           <View style={{ maxWidth: 360, gap: space(5) }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
