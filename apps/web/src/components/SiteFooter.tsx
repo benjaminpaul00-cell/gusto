@@ -7,7 +7,7 @@ import { font, r, space, WIDE } from "../theme";
 import { LogoMark, Wordmark } from "./Logo";
 
 const NAVY = "#0E1030";
-export const CONTACT_EMAIL = "corticalabs@yahoo.com";
+export const CONTACT_EMAIL = "info@mongusto.ca";
 const mailto = (subject: string) => `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}`;
 
 /** Carte de contact : un vrai lien « mailto: » (ouvre le logiciel de courriel du visiteur). */

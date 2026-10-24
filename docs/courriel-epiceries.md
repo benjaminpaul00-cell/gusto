@@ -35,5 +35,5 @@ Merci pour ce service, très utile aux familles québécoises. Je peux ajouter u
 Bonne journée,
 
 L’équipe Gusto
-corticalabs@yahoo.com
+info@mongusto.ca
 https://mongusto.ca
