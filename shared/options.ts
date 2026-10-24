@@ -23,7 +23,7 @@ export const CUISINES = [
   { id: "grecque", label: "Grecque" },
   { id: "libanaise", label: "Libanaise" },
   { id: "italienne", label: "Italienne" },
-  { id: "mexicaine", label: "Centraméricaine" }, // Mexique, Guatemala, Salvador…
+  { id: "mexicaine", label: "Amérique centrale" }, // Mexique, Guatemala, Salvador…
   { id: "indienne", label: "Indienne" },
   { id: "marocaine", label: "Marocaine" },
   { id: "thailandaise", label: "Thaïlandaise" },
@@ -129,6 +129,7 @@ export interface WeekPlan {
   pantry: ListItem[];
   specialty: ListItem[];
   total: number;
+  pantryIncluded?: boolean; // false = garde-manger listé mais pas compté (budget très serré)
 }
 
 export type PlanResponse =
@@ -140,6 +141,7 @@ export type PlanResponse =
       total: number;
       target: number;
       generatedAt: string;
+      notices?: string[]; // ajustements expliqués à l'utilisateur (budget serré, recettes à venir…)
     }
   | {
       ok: false;

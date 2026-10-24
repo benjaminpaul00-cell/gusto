@@ -49,28 +49,39 @@ if (res.ok) {
   console.log("✔ plan valide :", res.total, "$ pour une cible de", res.target, "$");
 }
 
-// 2. Budget serré : le planificateur remplace les repas chers, et respecte toujours la cible
-for (const budget of [150, 120, 100, 90, 80, 70, 60]) {
+// 2. Budget serré : toujours un menu, jamais au-dessus de la cible
+for (const budget of [150, 120, 100, 90, 80, 70, 60, 40, 20]) {
   res = planMenu({ ...base, budget }, data, () => null);
-  if (res.ok) assert.ok(res.total <= res.target, `budget ${budget}: ${res.total} > ${res.target}`);
-  else assert.equal(res.reason, "budget");
-  console.log(`✔ budget ${budget} $ →`, res.ok ? `${res.total} $` : `refusé, minimum ${res.minBudget} $`);
+  assert.equal(res.ok, true, `budget ${budget} : un menu doit toujours être créé`);
+  if (res.ok) {
+    assert.ok(res.total <= res.target, `budget ${budget}: ${res.total} > ${res.target}`);
+    const n = res.weeks.reduce((a, w) => a + w.days.reduce((b, d) => b + d.meals.length, 0), 0);
+    console.log(`✔ budget ${budget} $ → ${res.total} $, ${n} repas${res.notices ? " (avis : " + res.notices.length + ")" : ""}`);
+  }
 }
 
-// 3. Budget impossible : refus avec budget minimum
+// 3. Budget minuscule : menu quand même, avec repas laissés libres et un avis
 res = planMenu({ ...base, budget: 10, people: 20 }, data, () => null);
-assert.equal(res.ok, false);
-if (!res.ok) { assert.equal(res.reason, "budget"); assert.ok(res.minBudget! > 10); console.log("✔ budget impossible → minimum", res.minBudget, "$"); }
+assert.equal(res.ok, true);
+if (res.ok) { assert.ok(res.total <= res.target); assert.ok(res.notices?.length); console.log("✔ budget minuscule → menu partiel dans le budget :", res.notices![res.notices!.length - 1]); }
 
 // 4. « Seulement mon épicerie » exclut le djon djon
 res = planMenu({ ...base, onlyStore: true }, data, () => null);
 assert.equal(res.ok, true);
 if (res.ok) { assert.ok(!res.recipes["riz-djon"]); assert.equal(res.weeks[0].specialty.length, 0); console.log("✔ seulement mon épicerie : aucune épicerie spécialisée"); }
 
-// 5. Aucune recette
+// 5. Cuisine sans recettes encore : d'autres cuisines, avec un avis
 res = planMenu({ ...base, cuisines: ["grecque"] }, data, () => null);
-assert.equal(res.ok, false);
-console.log("✔ aucune recette → message clair");
+assert.equal(res.ok, true);
+if (res.ok) { assert.ok(res.notices?.some((n) => n.includes("grecque"))); console.log("✔ cuisine pas encore prête → autres cuisines :", res.notices![0]); }
+
+// 5b. Deux cuisines choisies : les deux sont présentes dans la semaine
+res = planMenu({ ...base, weeks: 1, budget: 300 }, data, () => null);
+if (res.ok) {
+  const cs = new Set(res.weeks[0].days.flatMap((d) => d.meals.map((m) => res.ok && res.recipes[m.recipeId].cuisine)));
+  assert.ok(cs.has("quebecoise") && cs.has("haitienne"), "les deux cuisines");
+  console.log("✔ deux cuisines choisies → les deux au menu");
+}
 
 // 6. Les semaines 2+ utilisent le prix régulier (poulet 16 $ au lieu de 12 $)
 res = planMenu({ ...base, budget: 1000 }, data, () => null);

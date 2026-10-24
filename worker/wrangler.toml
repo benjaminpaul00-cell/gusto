@@ -34,7 +34,7 @@ id = "7fa7cfeb394f46f58217bee0e63e6dc8"
 ALLOWED_ORIGIN = "https://gusto.benjaminpaul00.workers.dev"
 # Adresse publique de cette API, utilisée pour construire l'URL des images.
 PUBLIC_API_URL = "https://gusto-api.benjaminpaul00.workers.dev"
-DAILY_PLAN_LIMIT = "40"
+DAILY_PLAN_LIMIT = "200"
 # Modèles (modifiables sans toucher au code si un fournisseur change ses offres gratuites)
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"

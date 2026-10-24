@@ -27,6 +27,7 @@ export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean
       <div class="tag"><span class="hole"></span><div><b>${money(plan.total)}</b><small>sur un budget de ${money(plan.request.budget)}</small></div></div>
     </div>
   </header>`);
+  if (plan.notices?.length) parts.push(`<div class="notice">${plan.notices.map((n) => `<p>${esc(n)}</p>`).join("")}</div>`);
 
   const rows = (items: ListItem[]) => {
     let section = "";
@@ -47,7 +48,7 @@ export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean
       parts.push(`<section class="block page"><h2>Liste d’épicerie${plan.weeks.length > 1 ? ` · semaine ${w.week}` : ""} <span class="sum">${money(w.total)}</span></h2>
         ${w.estimated ? '<p class="note">Estimation au prix régulier : les rabais de cette semaine ne sont pas encore publiés.</p>' : ""}
         <table class="list">${rows(w.list)}</table>
-        ${w.pantry.length ? `<h3>À vérifier dans ton garde-manger</h3><p class="note">Déjà inclus dans le total. Retire ce que tu as déjà.</p><table class="list">${rows(w.pantry)}</table>` : ""}
+        ${w.pantry.length ? `<h3>À vérifier dans ton garde-manger</h3><p class="note">${w.pantryIncluded === false ? "Non inclus dans le total : on suppose que tu les as déjà." : "Déjà inclus dans le total. Retire ce que tu as déjà."}</p><table class="list">${rows(w.pantry)}</table>` : ""}
         ${w.specialty.length ? `<h3>À acheter dans une épicerie spécialisée</h3><p class="note">Prix maximal estimé.</p><table class="list">${rows(w.specialty)}</table>` : ""}
       </section>`);
     }
@@ -106,6 +107,7 @@ export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean
   article h2{font-size:20pt;margin:6px 0 0}
   .cols{display:grid;grid-template-columns:1fr 1.6fr;gap:22px}ul,ol{padding-left:18px;margin:4px 0}li{margin:2px 0}
   .tip{background:#FFF7CC;border:2px solid #0E1030;border-radius:10px;padding:4px 14px 8px;margin-top:12px}
+  .notice{background:#FFF7CC;border:2px solid #0E1030;border-radius:10px;padding:6px 14px;margin:12px 0}.notice p{margin:4px 0;font-size:9.5pt}
   footer{margin-top:28px;padding-top:10px;border-top:1px solid #E2E4F4;color:#585D82;font-size:8.5pt}
   </style></head><body>${parts.join("\n")}</body></html>`;
 }

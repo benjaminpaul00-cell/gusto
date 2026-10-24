@@ -181,7 +181,7 @@ function sizeLabel(qty: number, unit: Unit): string {
 }
 
 /** Coût réel d'un plan, au nombre d'emballages achetés. Les items de garde-manger sont achetés une fois, en semaine 1. */
-export function costPlan(slots: Slot[], data: PlannerData, weeks: number) {
+export function costPlan(slots: Slot[], data: PlannerData, weeks: number, pantryOwned = false) {
   const perWeek: { list: ListItem[]; pantry: ListItem[]; specialty: ListItem[]; total: number }[] = [];
   const pantryNeeds = new Map<string, number>();
   const pantryFirst = new Map<string, string>(); // forme commune → premier nom rencontré (son produit est utilisé)
@@ -218,7 +218,7 @@ export function costPlan(slots: Slot[], data: PlannerData, weeks: number) {
       const { price, size, product } = unitCost(data, n, w, n.qty);
       const packages = Math.max(1, Math.ceil(n.qty / size - 1e-9));
       const line = round2(packages * price);
-      total += line;
+      if (!(n.pantry && pantryOwned)) total += line; // garde-manger supposé déjà à la maison : listé, pas compté
       const info = data.ingredients.get(n.ingredient);
       const item: ListItem = {
         ingredient: n.ingredient,
@@ -253,6 +253,24 @@ export function validateRequest(req: PlanRequest): string | null {
   return null;
 }
 
+const CUISINE_ADJ: Record<string, string> = {
+  quebecoise: "québécoises", haitienne: "haïtiennes", chinoise: "chinoises", vietnamienne: "vietnamiennes", grecque: "grecques",
+  libanaise: "libanaises", italienne: "italiennes", mexicaine: "d’Amérique centrale", indienne: "indiennes", marocaine: "marocaines",
+  thailandaise: "thaïlandaises", portugaise: "portugaises", venezuelienne: "vénézuéliennes", colombienne: "colombiennes",
+  peruvienne: "péruviennes", dominicaine: "dominicaines",
+};
+const CUISINE_NOUN: Record<string, string> = {
+  quebecoise: "cuisine québécoise", haitienne: "cuisine haïtienne", chinoise: "cuisine chinoise", vietnamienne: "cuisine vietnamienne",
+  grecque: "cuisine grecque", libanaise: "cuisine libanaise", italienne: "cuisine italienne", mexicaine: "cuisine d’Amérique centrale",
+  indienne: "cuisine indienne", marocaine: "cuisine marocaine", thailandaise: "cuisine thaïlandaise", portugaise: "cuisine portugaise",
+  venezuelienne: "cuisine vénézuélienne", colombienne: "cuisine colombienne", peruvienne: "cuisine péruvienne", dominicaine: "cuisine dominicaine",
+};
+const joinFr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
+/** « cuisine vénézuélienne et cuisine colombienne » ou « vénézuéliennes et colombiennes » */
+function cuisineList(ids: readonly string[], form: "noun" | "adj" = "noun") {
+  return joinFr(ids.map((c) => (form === "adj" ? CUISINE_ADJ[c] : CUISINE_NOUN[c]) ?? c));
+}
+
 export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: PlannerRecipe) => string | null): PlanResponse {
   const invalid = validateRequest(req);
   if (invalid) return { ok: false, reason: "invalid", message: invalid };
@@ -261,26 +279,51 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
   const styles = req.styles?.length ? req.styles : (["normal"] as StyleId[]);
 
   // 1. Recettes admissibles et réalisables à cette épicerie
-  const pools = new Map<MealId, Resolved[]>();
-  for (const meal of req.meals) {
+  const notices: string[] = [];
+  const eligible = (meal: MealId, cuisines: readonly string[] | null, strictStyles: boolean) => {
     const pool: Resolved[] = [];
     for (const r of data.recipes) {
       if (r.meal !== meal) continue;
-      if (!req.cuisines.includes(r.cuisine as never)) continue;
-      if (!r.styles.some((s) => styles.includes(s))) continue;
-      if (!(req.diets ?? []).every((d) => r.diets.includes(d))) continue;
+      if (cuisines && !cuisines.includes(r.cuisine)) continue;
+      if (strictStyles && !r.styles.some((s) => styles.includes(s))) continue;
+      if (!(req.diets ?? []).every((d) => r.diets.includes(d))) continue; // restrictions : jamais assouplies
       const res = resolveRecipe(r, req.people, data, req.onlyStore);
       if (res) pool.push(res);
     }
+    return pool;
+  };
+  const pools = new Map<MealId, Resolved[]>();
+  const usedCuisines = new Set<string>();
+  for (const meal of req.meals) {
+    // Cuisines choisies d'abord ; sinon (recettes pas encore prêtes) d'autres cuisines, puis d'autres genres de repas.
+    let pool = eligible(meal, req.cuisines, true);
+    if (!pool.length) {
+      pool = eligible(meal, null, true);
+      if (pool.length) notices.push(`Nous préparons encore les recettes de ${cuisineList(req.cuisines)} pour ce repas : ton menu utilise d’autres cuisines en attendant.`);
+    }
+    if (!pool.length) pool = eligible(meal, null, false);
     if (pool.length === 0) {
       return {
         ok: false,
         reason: "not_enough_recipes",
-        message: "Aucune recette ne correspond à ces choix pour cette épicerie. Ajoutez une cuisine ou un genre de repas.",
+        message: "Aucune recette ne respecte encore ces restrictions alimentaires pour cette épicerie. Réessaie bientôt : de nouvelles recettes s’ajoutent chaque jour.",
       };
+    }
+    for (const r of pool) usedCuisines.add(r.recipe.cuisine);
+    // Moins de 4 plats différents : on complète avec d'autres cuisines plutôt que de répéter le même plat
+    const names = new Set(pool.map((r) => normalize(r.recipe.name)));
+    if (names.size < 4) {
+      const extra = eligible(meal, null, true).filter((r) => !pool.includes(r) && !names.has(normalize(r.recipe.name)));
+      if (extra.length) {
+        pool = [...pool, ...extra.slice(0, Math.max(0, 6 - names.size) * 3)];
+        if (!notices.some((n) => n.startsWith("Pour varier"))) notices.push("Pour varier ton menu, nous avons ajouté quelques recettes d’autres cuisines, le temps que ta sélection s’enrichisse.");
+      }
     }
     pools.set(meal, pool);
   }
+  const waiting = req.cuisines.filter((c) => !usedCuisines.has(c));
+  if (waiting.length && waiting.length < req.cuisines.length)
+    notices.push(`Les recettes ${cuisineList(waiting, "adj")} arrivent bientôt : ton menu utilise tes autres cuisines pour l’instant.`);
 
   // 2. Sélection initiale : variété d'abord, en alternant les cuisines, du moins cher au plus cher
   const slots: Slot[] = [];
@@ -296,13 +339,15 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         byCuisine.set(r.recipe.cuisine, list);
       }
       for (const list of byCuisine.values()) list.sort((a, b) => approxCost(a, data, w) - approxCost(b, data, w));
-      const cuisines = [...byCuisine.keys()];
+      // Les cuisines choisies se relaient ; les recettes d'appoint (autres cuisines) ne servent qu'à compléter
+      const all = [...byCuisine.keys()];
+      const chosen = all.filter((c) => (req.cuisines as readonly string[]).includes(c));
+      const cuisines = chosen.length ? chosen : all;
       let prev: string | null = null;
       const weekCount = new Map<string, number>();
       for (let d = 1; d <= 7; d++) {
+        // Les cuisines choisies se relaient d'un jour à l'autre
         const list = byCuisine.get(cuisines[(d - 1 + w) % cuisines.length])!;
-        // Le plat le moins servi jusqu'ici, jamais deux jours de suite, au plus 2 fois par semaine
-        // (comparé par nom de plat). Si la cuisine du jour n'a plus d'option, on prend dans les autres.
         const inWeek = (r: Resolved) => weekCount.get(dish(r)) ?? 0;
         const fits = (r: Resolved) => dish(r) !== prev && inWeek(r) < 2;
         const leastUsed = (xs: Resolved[]) => [...xs].sort((a, b) => (useCount.get(dish(a)) ?? 0) - (useCount.get(dish(b)) ?? 0));
@@ -316,48 +361,98 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
     }
   }
 
-  // 3. Tant que le total dépasse la cible, remplacer le repas le plus cher par une option moins chère
-  let { total } = costPlan(slots, data, req.weeks);
-  for (let guard = 0; total > target && guard < 600; guard++) {
-    const order = slots
-      .map((s, i) => ({ i, c: approxCost(s.r, data, s.week) }))
-      .sort((a, b) => b.c - a.c);
-    let improved = false;
-    for (const { i, c } of order) {
-      const s = slots[i];
-      const cheaper = pools
-        .get(s.meal)!
-        .map((r) => ({ r, c: approxCost(r, data, s.week) }))
-        .filter((x) => x.c < c - 0.01)
-        .sort((a, b) => a.c - b.c);
-      // Au plus 2 fois le même plat par semaine, si une autre option existe
-      const timesInWeek = (r: Resolved) => slots.filter((o, j) => j !== i && o.week === s.week && dish(o.r) === dish(r)).length;
-      // … et jamais le même plat que la veille ou le lendemain (même repas)
-      const neighbor = (r: Resolved) => slots.some((o) => o.week === s.week && o.meal === s.meal && Math.abs(o.day - s.day) === 1 && dish(o.r) === dish(r));
-      // Limite stricte : au plus 2 fois le même plat par semaine (plus seulement s'il n'y a pas assez de plats différents).
-      // Mieux vaut annoncer un budget minimum réaliste que servir 7 fois la même recette.
-      const distinct = new Set(pools.get(s.meal)!.map(dish)).size;
-      const cap = Math.max(2, Math.ceil(7 / Math.max(1, distinct)));
-      const allowed = cheaper.filter((x) => timesInWeek(x.r) < cap);
-      cheaper.splice(0, cheaper.length, ...allowed);
-      // Ordre de préférence : plats jamais servis sur la période, puis peu servis, puis le reste (toujours du moins cher au plus cher)
-      const timesInPeriod = (r: Resolved) => slots.filter((o, j) => j !== i && dish(o.r) === dish(r)).length;
-      const rank = (x: { r: Resolved }) => (timesInPeriod(x.r) === 0 ? 0 : timesInWeek(x.r) < 2 && !neighbor(x.r) ? 1 : 2);
-      cheaper.sort((a, b) => rank(a) - rank(b) || a.c - b.c);
-      for (const cand of cheaper) {
-        const old = s.r;
-        s.r = cand.r;
-        const next = costPlan(slots, data, req.weeks).total;
-        if (next < total) {
-          total = next;
-          improved = true;
-          break;
-        }
-        s.r = old;
+  // 3. Tant que le total dépasse la cible, remplacer les repas les plus chers par des options moins chères.
+  //    Préférences : même cuisine (garde la répartition), plats pas encore servis, peu servis, puis le prix.
+  //    strict = au plus 2 fois le même plat par semaine.
+  //    Rapidité (forfait gratuit : peu de temps de calcul) : les remplacements se décident avec le coût estimé
+  //    de chaque plat (en cache) ; la facture exacte, au nombre d'emballages, n'est recalculée qu'une fois par tour.
+  const acCache = new Map<string, number>();
+  const ac = (r: Resolved, w: number) => {
+    const k = `${r.recipe.id}|${w === 1 ? 1 : 2}`;
+    let v = acCache.get(k);
+    if (v === undefined) { v = approxCost(r, data, w); acCache.set(k, v); }
+    return v;
+  };
+  let pantryOwned = false;
+  let total = costPlan(slots, data, req.weeks).total;
+  const reduce = (strict: boolean) => {
+    for (let round = 0; round < 12 && total > target; round++) {
+      const weekCount = new Map<string, number>();
+      const periodCount = new Map<string, number>();
+      for (const o of slots) {
+        weekCount.set(`${o.week}|${dish(o.r)}`, (weekCount.get(`${o.week}|${dish(o.r)}`) ?? 0) + 1);
+        periodCount.set(dish(o.r), (periodCount.get(dish(o.r)) ?? 0) + 1);
       }
-      if (improved) break;
+      const est0 = slots.reduce((sum, o) => sum + ac(o.r, o.week), 0);
+      const goal = est0 * (target / total) - 0.5; // ce que l'estimation doit atteindre pour passer sous la cible
+      let est = est0;
+      let changed = false;
+      const order = slots.map((_, i) => i).sort((x, y) => ac(slots[y].r, slots[y].week) - ac(slots[x].r, slots[x].week));
+      for (const i of order) {
+        if (est <= goal) break;
+        const s = slots[i];
+        const c = ac(s.r, s.week);
+        const inWeek = (r: Resolved) => (weekCount.get(`${s.week}|${dish(r)}`) ?? 0) - (dish(r) === dish(s.r) ? 1 : 0);
+        const inPeriod = (r: Resolved) => (periodCount.get(dish(r)) ?? 0) - (dish(r) === dish(s.r) ? 1 : 0);
+        const distinct = new Set(pools.get(s.meal)!.map(dish)).size;
+        const cap = strict ? Math.max(2, Math.ceil(7 / Math.max(1, distinct))) : Infinity;
+        const rank = (r: Resolved) => (r.recipe.cuisine === s.r.recipe.cuisine ? 0 : 3) + (inPeriod(r) === 0 ? 0 : inWeek(r) < 2 ? 1 : 2);
+        let best: Resolved | null = null;
+        let bestKey = Infinity;
+        for (const r of pools.get(s.meal)!) {
+          const rc = ac(r, s.week);
+          if (rc >= c - 0.01 || inWeek(r) >= cap) continue;
+          const key = rank(r) * 1e6 + rc;
+          if (key < bestKey) { bestKey = key; best = r; }
+        }
+        if (!best) continue;
+        // Mise à jour des compteurs
+        const oldW = `${s.week}|${dish(s.r)}`, newW = `${s.week}|${dish(best)}`;
+        weekCount.set(oldW, (weekCount.get(oldW) ?? 1) - 1);
+        weekCount.set(newW, (weekCount.get(newW) ?? 0) + 1);
+        periodCount.set(dish(s.r), (periodCount.get(dish(s.r)) ?? 1) - 1);
+        periodCount.set(dish(best), (periodCount.get(dish(best)) ?? 0) + 1);
+        est += ac(best, s.week) - c;
+        s.r = best;
+        changed = true;
+      }
+      if (!changed) break;
+      total = costPlan(slots, data, req.weeks, pantryOwned).total;
     }
-    if (!improved) break;
+  };
+  reduce(true);
+  if (total > target) {
+    // Budget serré : on accepte que certains plats reviennent plus souvent
+    reduce(false);
+    notices.push("Pour respecter ton budget, certains plats reviennent plus souvent dans la semaine.");
+  }
+  if (total > target) {
+    // Budget très serré : on suppose d'abord que le sel, l'huile et les épices sont déjà à la maison
+    pantryOwned = true;
+    total = costPlan(slots, data, req.weeks, true).total;
+    reduce(false);
+    notices.push("Ton budget suppose que tu as déjà le garde-manger (sel, huile, épices…) : ces articles sont listés à part, sans être comptés.");
+  }
+  if (total > target) {
+    // Budget très serré : on laisse libres les repas les plus chers, par paquets, jusqu'à passer sous le budget.
+    const requested = slots.length;
+    for (let round = 0; round < 40 && slots.length && total > target; round++) {
+      const est = slots.reduce((sum, o) => sum + ac(o.r, o.week), 0);
+      const goal = est * (target / total);
+      slots.sort((x, y) => ac(y.r, y.week) - ac(x.r, x.week));
+      let cut = est;
+      let n = 0;
+      while (n < slots.length - 1 && cut > goal) { cut -= ac(slots[n].r, slots[n].week); n++; }
+      slots.splice(0, Math.max(1, n));
+      total = costPlan(slots, data, req.weeks, pantryOwned).total;
+    }
+    slots.sort((x, y) => x.week - y.week || x.day - y.day);
+    // Des repas laissés libres : l'avis sur les plats répétés n'a plus d'intérêt
+    const k = notices.findIndex((n) => n.startsWith("Pour respecter ton budget, certains plats"));
+    if (k >= 0) notices.splice(k, 1);
+    notices.push(slots.length
+      ? `Ton budget couvre ${slots.length} repas sur ${requested}. Les autres sont laissés libres pour que tu ne dépasses jamais ton budget.`
+      : "Ce budget ne couvre pas encore un repas complet avec ces choix. Augmente un peu le montant pour obtenir un menu.");
   }
 
   // 4. Même coût, meilleur ordre : dans chaque semaine, on répartit les plats pour éviter deux jours de suite identiques
@@ -368,7 +463,6 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       for (const x of days) counts.set(dish(x.r), [...(counts.get(dish(x.r)) ?? []), x.r]);
       let prevDish: string | null = null;
       for (const x of days) {
-        // Le plat restant le plus fréquent, différent de la veille (stratégie gloutonne classique)
         const options = [...counts.entries()].filter(([, l]) => l.length).sort((a, b) => b[1].length - a[1].length);
         const chosen = options.find(([k]) => k !== prevDish) ?? options[0];
         x.r = chosen[1].pop()!;
@@ -377,15 +471,7 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
     }
   }
 
-  const costed = costPlan(slots, data, req.weeks);
-  if (costed.total > target) {
-    return {
-      ok: false,
-      reason: "budget",
-      message: "Ce budget est trop bas pour ces choix. Augmentez le budget ou réduisez le nombre de repas, de semaines ou de personnes.",
-      minBudget: Math.ceil(costed.total / BUDGET_SAFETY),
-    };
-  }
+  const costed = costPlan(slots, data, req.weeks, pantryOwned);
 
   // 4. Réponse
   const recipes: Record<string, RecipeView> = {};
@@ -426,15 +512,16 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       days.push({
         day: d,
         meals: req.meals
-          .map((meal) => slots.find((s) => s.week === w && s.day === d && s.meal === meal)!)
+          .map((meal) => slots.find((s) => s.week === w && s.day === d && s.meal === meal))
+          .filter((s): s is Slot => !!s)
           .map((s) => ({ meal: s.meal, recipeId: s.r.recipe.id })),
       });
     }
     const pw = costed.perWeek[w - 1];
-    weeks.push({ week: w, estimated: w > 1, days, list: pw.list, pantry: pw.pantry, specialty: pw.specialty, total: pw.total });
+    weeks.push({ week: w, estimated: w > 1, days, list: pw.list, pantry: pw.pantry, specialty: pw.specialty, total: pw.total, ...(pantryOwned ? { pantryIncluded: false } : {}) });
   }
 
-  return { ok: true, request: req, weeks, recipes, total: costed.total, target, generatedAt: new Date().toISOString() };
+  return { ok: true, request: req, weeks, recipes, total: costed.total, target, generatedAt: new Date().toISOString(), ...(notices.length ? { notices } : {}) };
 }
 
 function scaleDisplay(i: RecipeIngredient, factor: number): string {

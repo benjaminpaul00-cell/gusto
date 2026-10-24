@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import { Link } from "expo-router";
 import Head from "expo-router/head";
-import { ArrowLeft, ArrowRight, CalendarDays, FileDown, ShoppingBasket, Utensils, X } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, CalendarDays, FileDown, Info, ShoppingBasket, Utensils, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { DatePicker, longDate } from "../src/components/DatePicker";
@@ -95,6 +95,17 @@ function Menu() {
         </View>
 
         <View {...rsp("gutter")} style={[s.page, { paddingTop: space(8), paddingBottom: space(20) }]}>
+          {plan.notices?.length ? (
+            <View accessibilityRole="alert" style={{ marginBottom: space(6), padding: space(5), borderRadius: radius.lg, borderWidth: 2, borderColor: t.edge, backgroundColor: t.tagSoft, gap: space(2) }}>
+              {plan.notices.map((n) => (
+                <View key={n} style={{ flexDirection: "row", gap: space(3) }}>
+                  <Info size={18} color={t.ink} strokeWidth={2.25} />
+                  <Text style={{ flex: 1, fontFamily: font.medium, fontSize: 15, lineHeight: 22, color: t.ink }}>{n}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {plan.weeks.length > 1 ? (
             <View style={[s.chips, { marginBottom: space(5) }]}>
               {plan.weeks.map((x) => <Chip key={x.week} radio label={`Semaine ${x.week}`} selected={week === x.week} onPress={() => setWeek(x.week)} />)}
@@ -116,7 +127,17 @@ function Menu() {
               {w.days.map((d) => (
                 <View key={d.day} style={{ gap: space(3) }}>
                   <Text style={s.day}>{DAYS[d.day - 1]}</Text>
-                  {d.meals.map((m) => {
+                  {plan.request.meals.map((meal) => {
+                    const m = d.meals.find((x) => x.meal === meal);
+                    if (!m) {
+                      // Repas laissé libre pour respecter le budget
+                      return (
+                        <View key={meal} style={[s.card, { borderStyle: "dashed", boxShadow: "none", paddingVertical: space(4) } as any]}>
+                          <Text style={s.cardMeal}>{label(MEALS, meal)}</Text>
+                          <Text style={[s.note, { flex: 1 }]}>Repas libre : non inclus dans ton budget.</Text>
+                        </View>
+                      );
+                    }
                     const r = plan.recipes[m.recipeId];
                     return <MealCard key={m.meal} r={r} meal={label(MEALS, m.meal)} onPress={() => setOpen(r)} s={s} t={t} />;
                   })}
@@ -209,7 +230,7 @@ function GroceryList({ w, checked, setChecked, s, t }: { w: Plan["weeks"][number
     <View>
       {w.estimated ? <Text style={s.note}>Estimation au prix régulier : les rabais de cette semaine ne sont pas encore publiés.</Text> : null}
       {block(null, w.list)}
-      {block("À vérifier dans ton garde-manger", w.pantry, "Déjà inclus dans le total. Retire ce que tu as déjà et économise d’autant.")}
+      {block("À vérifier dans ton garde-manger", w.pantry, w.pantryIncluded === false ? "Non inclus dans le total : on suppose que tu les as déjà. Achète seulement ce qui te manque." : "Déjà inclus dans le total. Retire ce que tu as déjà et économise d’autant.")}
       {block("À acheter dans une épicerie spécialisée", w.specialty, "Prix estimé : le total compte le haut de la fourchette.")}
     </View>
   );

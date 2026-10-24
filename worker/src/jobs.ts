@@ -275,7 +275,10 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity) {
   // Les ingrédients d'abord : une recette n'est utilisable que lorsque ses ingrédients ont un prix.
   const jobs = await env.DB.prepare(
     `SELECT * FROM jobs WHERE status = 'queued' AND run_after <= ?
-     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'gen_recipes' THEN 2 ELSE 3 END, id LIMIT 20`,
+     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'gen_recipes' THEN 2 ELSE 3 END,
+       -- Recettes : d'abord les combinaisons cuisine + repas qui en ont le moins (banque équilibrée)
+       CASE kind WHEN 'gen_recipes' THEN (SELECT COUNT(*) FROM recipes r WHERE r.cuisine = json_extract(jobs.payload, '$.cuisine') AND r.meal = json_extract(jobs.payload, '$.meal')) ELSE 0 END,
+       id LIMIT 20`,
   )
     .bind(now())
     .all<{ id: number; kind: string; payload: string; attempts: number }>();

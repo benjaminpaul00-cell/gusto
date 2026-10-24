@@ -118,7 +118,7 @@ export const CUISINE_PAGES: CuisinePage[] = [
       "Riz à la tomate et haricots frits.",
       "Salsa fraîche et guacamole maison.",
     ],
-    "Les tortillas, les haricots, le cumin et la plupart des piments se trouvent dans les grandes épiceries. Les épiceries latinos offrent la farine de maïs (masa harina) pour les pupusas, des piments séchés et de la crème centraméricaine.",
+    "Les tortillas, les haricots, le cumin et la plupart des piments se trouvent dans les grandes épiceries. Les épiceries latinos offrent la farine de maïs (masa harina) pour les pupusas, des piments séchés et de la crème d’Amérique centrale.",
     "Une seule pâte de masa harina sert aux tortillas, aux pupusas et aux tamales : un sac dure longtemps."),
   page("indienne", "Cuisine indienne maison",
     "Dal, currys, chana masala et riz biryani : une cuisine riche en saveurs qui fait la part belle aux légumineuses.",
