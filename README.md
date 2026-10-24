@@ -45,7 +45,7 @@ Services Cloudflare utilisés, tous gratuits sans carte de crédit : Workers (AP
 2. `worker/scripts/prix.mjs`, lancé **depuis un ordinateur**, demande à l’API les ingrédients à mettre à jour (`GET /admin/prices/pending`), cherche les produits sur épiceries.ca (3 requêtes par seconde au plus) et envoie les résultats (`POST /admin/prices`). Les prix sont revérifiés après 5 jours.
 3. Un ingrédient introuvable est renvoyé une fois à l’IA pour d’autres termes (tâche `retry_terms`).
 
-Sur l’ordinateur de développement, la tâche Windows **« Gusto - prix »** lance `worker\scripts\prix-quotidien.cmd` chaque jour à 7 h (ou au démarrage suivant). Journal : `worker/prix.log`. Pour la retirer : Planificateur de tâches → « Gusto - prix » → Supprimer.
+Sur l’ordinateur de développement, la tâche Windows **« Gusto - prix »** lance `worker\scripts\prix-quotidien.cmd` toutes les 3 heures, pour que les nouvelles recettes deviennent vite utilisables. Journal : `worker/prix.log`. Pour la retirer : Planificateur de tâches → « Gusto - prix » → Supprimer.
 
 La solution durable : qu’épiceries.ca autorise l’API (brouillon de courriel dans `docs/courriel-epiceries.md`). Il suffira alors de laisser l’API chercher elle-même (c’est déjà prévu dans `resolveIngredient`).
 
