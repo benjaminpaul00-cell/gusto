@@ -12,7 +12,7 @@ apps/web/      Site web en Expo (React Native), pages statiques servies par un W
 worker/        API sur Cloudflare Workers
   src/planner.ts   Calcul du menu et du budget (code pur, sans IA)
   src/jobs.ts      Tâches d'arrière-plan : recettes, infos d'ingrédients, photos
-  src/ai.ts        Fournisseurs d'IA en cascade (Gemini → Mistral → Groq → IA Cloudflare)
+  src/ai.ts        Fournisseurs d'IA en cascade (Mistral → Groq ; photos : Mistral, puis IA Cloudflare)
   src/epiceries.ts Recherche de produits sur épiceries.ca (catégories, pertinence, formats)
   src/images.ts    Stockage des photos : R2 si branché, sinon Workers KV (gratuit)
   scripts/prix.mjs        Récupère les prix depuis un ordinateur (voir « Prix »)
@@ -51,7 +51,7 @@ La solution durable : qu’épiceries.ca autorise l’API (brouillon de courriel
 
 ## Mise en route (nouvelle installation)
 
-Prérequis : Node 22 ou plus, un compte Cloudflare, une clé Groq gratuite (console.groq.com, sans carte de crédit).
+Prérequis : Node 22 ou plus, un compte Cloudflare, une clé Mistral gratuite (console.mistral.ai, forfait « Experiment », numéro de téléphone seulement) et une clé Groq gratuite (console.groq.com). Mistral écrit les recettes et produit les photos (FLUX Ultra) ; Groq sert de secours.
 
 Sous Windows PowerShell, utilisez `npx.cmd` au lieu de `npx` si les scripts sont bloqués.
 
@@ -67,6 +67,7 @@ npx wrangler d1 create gusto                     # copier l'identifiant dans wra
 npx wrangler kv namespace create gusto-images    # copier l'identifiant dans wrangler.toml (kv_namespaces)
 npm run db:init
 npx wrangler secret put IP_SALT                  # une chaîne aléatoire
+npx wrangler secret put MISTRAL_API_KEY
 npx wrangler secret put GROQ_API_KEY
 node scripts/nouveau-jeton.mjs                   # crée l'ADMIN_TOKEN et le garde dans worker/.admin-token
 npx wrangler deploy

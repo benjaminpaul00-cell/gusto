@@ -270,20 +270,22 @@ const HANDLERS: Record<string, (env: Env, p: any) => Promise<void>> = {
 };
 
 /** Traite les tâches en file. `maxJobs` limite la durée quand quelqu'un attend la réponse (/admin/run). */
-export async function runJobs(env: Env, budget = 40, maxJobs = Infinity) {
+export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKind?: string) {
   const done: string[] = [];
   // Les ingrédients d'abord : une recette n'est utilisable que lorsque ses ingrédients ont un prix.
   const jobs = await env.DB.prepare(
-    `SELECT * FROM jobs WHERE status = 'queued' AND run_after <= ?
+    `SELECT * FROM jobs WHERE status = 'queued' AND run_after <= ? AND (?2 IS NULL OR kind = ?2)
      ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'gen_recipes' THEN 2 ELSE 3 END,
        -- Recettes : d'abord les combinaisons cuisine + repas qui en ont le moins (banque équilibrée)
        CASE kind WHEN 'gen_recipes' THEN (SELECT COUNT(*) FROM recipes r WHERE r.cuisine = json_extract(jobs.payload, '$.cuisine') AND r.meal = json_extract(jobs.payload, '$.meal')) ELSE 0 END,
        id LIMIT 20`,
   )
-    .bind(now())
+    .bind(now(), onlyKind ?? null)
     .all<{ id: number; kind: string; payload: string; attempts: number }>();
 
+  const limited = new Set<string>(); // genres de tâches qui viennent d'atteindre une limite : inutile d'insister
   for (const job of jobs.results) {
+    if (limited.has(job.kind)) continue;
     const cost = COST[job.kind] ?? 10;
     if (cost > budget) continue;
     budget -= cost;
@@ -296,6 +298,7 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity) {
       // Quota épuisé ou panne : on réessaie dans 6 h. Le site continue de fonctionner avec la banque existante.
       // Limite par minute (429) : nouvel essai bientôt. Quota du jour épuisé : dans 6 h. Autre erreur : 30 min.
       const msg = String((e as Error).message);
+      if (/ 429 /.test(msg)) limited.add(job.kind);
       const delay = !(e instanceof AllProvidersFailed) ? 30 * 60_000 : / 429/.test(msg) && !/daily|4006/.test(msg) ? 15 * 60_000 : 6 * 3600_000;
       await env.DB.prepare("UPDATE jobs SET attempts = ?, last_error = ?, run_after = ?, status = ? WHERE id = ?")
         .bind(attempts, String((e as Error).message).slice(0, 500), now() + delay, attempts >= 5 ? "failed" : "queued", job.id)

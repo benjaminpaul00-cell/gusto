@@ -4,6 +4,7 @@ import { getImage } from "./images";
 import { cleanup, runJobs, savePrices, seed } from "./jobs";
 import type { StoreMatch } from "./epiceries";
 import { planMenu } from "./planner";
+import { imagePrompt, mistralImage } from "./ai";
 
 const json = (env: Env, body: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -114,6 +115,15 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
   if (path === "/admin/images") return adminImages(env, token);
   if (path === "/admin/status") return adminStatus(env);
   // Modèles disponibles chez Groq (pour choisir GROQ_MODEL quand un modèle est retiré)
+  // Essai d'une photo par Mistral : renvoie l'image ou l'erreur
+  if (path === "/admin/test-image") {
+    try {
+      const img = await mistralImage(env, imagePrompt("poulet aux arachides", "haïtienne"));
+      return new Response(img.bytes, { headers: { "Content-Type": img.type } });
+    } catch (e) {
+      return json(env, { error: (e as Error).message }, 502);
+    }
+  }
   if (path === "/admin/ai-models") {
     if (!env.GROQ_API_KEY) return json(env, { groq: null });
     const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` } });
@@ -194,7 +204,8 @@ export default {
       ctx.waitUntil(enqueue(env, "refresh_prices", { offset: 0 }).then(() => cleanup(env)));
       return;
     }
-    ctx.waitUntil(runJobs(env));
+    // Photos à part : elles ne doivent pas attendre que toutes les recettes soient écrites.
+    ctx.waitUntil(runJobs(env).then(() => runJobs(env, 9, 3, "gen_image")));
     // Une fois par jour (vers 4 h au Québec) : effacer les compteurs anti-abus de la veille,
     // comme l'annonce la politique de confidentialité.
     const t = new Date(event.scheduledTime);

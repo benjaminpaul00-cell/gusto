@@ -38,7 +38,7 @@ DAILY_PLAN_LIMIT = "200"
 # Modèles (modifiables sans toucher au code si un fournisseur change ses offres gratuites)
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
-MISTRAL_MODEL = "mistral-small-latest"
+MISTRAL_MODEL = "mistral-large-latest,mistral-small-latest"
 GROQ_MODEL = "openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b"
 WORKERS_AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 WORKERS_AI_IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"

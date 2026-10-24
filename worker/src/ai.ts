@@ -46,6 +46,18 @@ async function openAiCompatible(url: string, key: string, model: string, prompt:
   return data.choices?.[0]?.message?.content ?? "";
 }
 
+/** Réessaie après une limite par seconde (429), deux fois au plus, avec une attente croissante. */
+async function withRetry(call: () => Promise<string>): Promise<string> {
+  for (let i = 0; ; i++) {
+    try {
+      return await call();
+    } catch (e) {
+      if (i >= 2 || !/ 429 /.test((e as Error).message)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    }
+  }
+}
+
 async function workersAiText(env: Env, prompt: string): Promise<string> {
   const out: any = await env.AI.run(env.WORKERS_AI_TEXT_MODEL as any, {
     messages: [{ role: "user", content: prompt }],
@@ -58,8 +70,11 @@ async function workersAiText(env: Env, prompt: string): Promise<string> {
 export async function generateJson<T>(env: Env, prompt: string, validate: (x: any) => x is T): Promise<T> {
   const providers: [string, () => Promise<string>][] = [];
   if (env.GEMINI_API_KEY) providers.push(["gemini", () => gemini(env, prompt)]);
+  // MISTRAL_MODEL peut contenir plusieurs modèles séparés par des virgules. Le forfait gratuit limite
+  // le nombre de requêtes par seconde : en cas de 429, on attend un peu et on réessaie avant de passer au suivant.
   if (env.MISTRAL_API_KEY)
-    providers.push(["mistral", () => openAiCompatible("https://api.mistral.ai/v1/chat/completions", env.MISTRAL_API_KEY!, env.MISTRAL_MODEL, prompt)]);
+    for (const model of env.MISTRAL_MODEL.split(",").map((m) => m.trim()).filter(Boolean))
+      providers.push([`mistral:${model}`, () => withRetry(() => openAiCompatible("https://api.mistral.ai/v1/chat/completions", env.MISTRAL_API_KEY!, model, prompt))]);
   // GROQ_MODEL peut contenir plusieurs modèles séparés par des virgules : essayés dans l'ordre.
   if (env.GROQ_API_KEY)
     for (const model of env.GROQ_MODEL.split(",").map((m) => m.trim()).filter(Boolean))
@@ -88,9 +103,65 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+/** Image par Mistral (outil « image_generation » de l'API des agents). L'agent est créé une fois et gardé dans KV. */
+export async function mistralImage(env: Env, prompt: string): Promise<{ bytes: Uint8Array; type: string }> {
+  const key = env.MISTRAL_API_KEY!;
+  const call = async (path: string, init?: RequestInit) => {
+    const res = await fetch(`https://api.mistral.ai/v1${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) throw new Error(`mistral-image ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return res;
+  };
+  let agentId = await env.IMAGES_KV?.get("mistral-image-agent");
+  if (!agentId) {
+    const a: any = await (await call("/agents", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "mistral-medium-latest",
+        name: "Gusto photos",
+        instructions: "Generate exactly one realistic food photograph matching the request. Do not answer with text only.",
+        tools: [{ type: "image_generation" }],
+      }),
+    })).json();
+    agentId = a.id as string;
+    await env.IMAGES_KV?.put("mistral-image-agent", agentId);
+  }
+  const conv: any = await (await call("/conversations", {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId, inputs: prompt, store: false }),
+  })).json();
+  const chunks = (conv.outputs ?? []).flatMap((o: any) => (Array.isArray(o.content) ? o.content : []));
+  const file = chunks.find((c: any) => c.type === "tool_file" && c.file_id);
+  if (file) {
+    const img = await call(`/files/${file.file_id}/content`);
+    return { bytes: new Uint8Array(await img.arrayBuffer()), type: file.file_type === "jpeg" || file.file_type === "jpg" ? "image/jpeg" : "image/png" };
+  }
+  // Autre forme de réponse : un lien Markdown vers l'image (valide une heure)
+  const text = (conv.outputs ?? []).map((o: any) => (typeof o.content === "string" ? o.content : "")).join(" ");
+  const link = text.match(/!\[[^\]]*\]\((https:\/\/[^)\s]+)\)/)?.[1];
+  if (!link) throw new Error(`mistral-image: aucune image ${text.slice(0, 200)}`);
+  const img = await fetch(link);
+  if (!img.ok) throw new Error(`mistral-image: téléchargement ${img.status}`);
+  return { bytes: new Uint8Array(await img.arrayBuffer()), type: (img.headers.get("content-type") ?? "").startsWith("image/") ? img.headers.get("content-type")! : "image/jpeg" };
+}
+
 /** Génère une image de plat. Cloudflare Workers AI d'abord, puis Gemini si une clé est configurée. */
 export async function generateImage(env: Env, prompt: string): Promise<{ bytes: Uint8Array; type: string }> {
   const errors: string[] = [];
+  // Mistral d'abord (FLUX Ultra, bien plus beau). Limite atteinte : on réessaie plus tard plutôt que de
+  // mélanger les styles de photos. Autre panne : l'IA de Cloudflare prend le relais.
+  if (env.MISTRAL_API_KEY) {
+    try {
+      return await mistralImage(env, prompt);
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (/ 429 /.test(msg)) throw new AllProvidersFailed(`mistral: ${msg}`);
+      errors.push(`mistral: ${msg}`);
+    }
+  }
+
   try {
     const out: any = await env.AI.run(env.WORKERS_AI_IMAGE_MODEL as any, { prompt, steps: 4 });
     if (out?.image) return { bytes: base64ToBytes(out.image), type: "image/jpeg" };
