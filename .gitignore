@@ -13,3 +13,6 @@ web-build/
 .admin-token
 # Journal du programme de prix
 worker/prix.log
+
+# Copie locale des données et outils de test (jamais publiés)
+worker/.local/

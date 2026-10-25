@@ -4,7 +4,7 @@
 // Usage : node scripts/prix.mjs   (lit le jeton dans worker/.admin-token)
 // Lancé automatiquement chaque jour par le Planificateur de tâches de Windows (tâche « Gusto - prix »).
 import { appendFileSync, readFileSync } from "node:fs";
-import { isFree, matchIngredient } from "../src/epiceries.ts";
+import { isFree, matchIngredient, withHistory } from "../src/epiceries.ts";
 
 const API = process.env.GUSTO_API ?? "https://api.mongusto.ca";
 const token = readFileSync(new URL("../.admin-token", import.meta.url), "utf8").trim();
@@ -52,7 +52,7 @@ try {
       if (isFree(it.name)) { batch.push({ ingredient: it.name, matches: [] }); continue; } // eau : rien à acheter
       let matches = [];
       try {
-        matches = await matchIngredient([...it.terms, it.name], it.categories ?? []);
+        matches = await withHistory(await matchIngredient([...it.terms, it.name], it.categories ?? []));
       } catch (e) {
         log(`  ${it.name} : ${e.message}`);
         if (String(e.message).includes("JSON")) throw new Error("épiceries.ca refuse aussi cet ordinateur (captcha). Arrêt.");

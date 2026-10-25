@@ -9,6 +9,7 @@ import { Screen } from "../src/components/Screen";
 import { Button, IconBadge } from "../src/components/ui";
 import { CUISINES, MEALS, STORES, type ListItem, type PlanResponse, type RecipeView } from "../../../shared/options";
 import { AdSlot } from "../src/components/AdSlot";
+import { AddedGroceries, AddedRecipes, useAdditions } from "../src/components/Additions";
 import { Chip } from "../src/components/Chip";
 import { PriceTag } from "../src/components/PriceTag";
 import { useConsent } from "../src/consent";
@@ -18,6 +19,7 @@ import { exportPdf } from "../src/export/pdf";
 import { saveFile } from "../src/export/save";
 import { loadPlan } from "../src/storage";
 import { font, money, r as rsp, radius, space, useTheme, type Theme } from "../src/theme";
+import { dealText } from "../src/deal";
 
 type Plan = Extract<PlanResponse, { ok: true }>;
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -46,6 +48,7 @@ function Menu() {
   const [open, setOpen] = useState<RecipeView | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [exporting, setExporting] = useState<"pdf" | "cal" | null>(null);
+  const additions = useAdditions();
 
   useEffect(() => { loadPlan().then(setPlan); }, []);
 
@@ -59,6 +62,12 @@ function Menu() {
           <Text style={[s.note, { textAlign: "center", maxWidth: 380 }]}>Réponds à quelques questions et Gusto prépare ton menu et ta liste d’épicerie.</Text>
           <Button label="Créer un menu" icon={ArrowRight} href="/#planificateur" />
         </View>
+        {additions.list.length ? (
+          <View {...rsp("gutter")} style={[s.page, { paddingBottom: space(16), gap: space(6) }]}>
+            <AddedRecipes {...additions} />
+            <AddedGroceries {...additions} />
+          </View>
+        ) : null}
       </Screen>
     );
   }
@@ -146,9 +155,13 @@ function Menu() {
                   })}
                 </View>
               ))}
+              <AddedRecipes {...additions} />
             </View>
           ) : (
-            <GroceryList w={w} checked={checked} setChecked={setChecked} s={s} t={t} />
+            <View>
+              <GroceryList w={w} checked={checked} setChecked={setChecked} s={s} t={t} />
+              <AddedGroceries {...additions} />
+            </View>
           )}
 
           <AdSlot consent={consent} />
@@ -224,7 +237,7 @@ function GroceryList({ w, checked, setChecked, s, t }: { w: Plan["weeks"][number
                 <View style={[s.box, on && { backgroundColor: t.primary, borderColor: t.primary }]}>{on ? <Text style={{ color: t.onPrimary, fontSize: 13 }}>✓</Text> : null}</View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.itemName, on && { textDecorationLine: "line-through", color: t.muted }]}>{i.packages} × {i.product}</Text>
-                  <Text style={s.itemMeta}>{i.size}{showStore && i.store ? ` · chez ${label(STORES, i.store)}` : ""}{i.discounted ? "  " : ""}{i.discounted ? <Text style={{ color: t.sale, fontFamily: font.semibold }}>rabais</Text> : null}{i.estimated ? <Text style={{ color: t.muted, fontFamily: font.semibold }}>  prix estimé</Text> : null}</Text>
+                  <Text style={s.itemMeta}>{i.size}{showStore && i.store ? ` · chez ${label(STORES, i.store)}` : ""}{i.discounted ? "  " : ""}{i.discounted ? <Text style={{ color: t.sale, fontFamily: font.semibold }}>{dealText(i)}</Text> : null}{i.estimated ? <Text style={{ color: t.muted, fontFamily: font.semibold }}>  prix estimé</Text> : null}</Text>
                 </View>
                 <Text style={s.itemPrice}>{money(i.total)}</Text>
               </Pressable>

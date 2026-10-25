@@ -30,6 +30,17 @@ html.js [data-r~="reveal-scale"]:not([data-in]){opacity:0;transform:scale(.92)}
 [data-r~="dim"]{transition:opacity .15s ease}
 [data-r~="dim"]:hover{opacity:.7}
 [data-r~="wiggle"]:hover{animation:wiggle .5s ease}
+/* Lignes de la liste de recettes : fond teinté et flèche qui glisse au survol */
+[data-r~="row"]{transition:background-color .2s ease}
+[data-r~="row"]:hover{background-color:rgba(43,68,255,.06)}
+[data-r~="arrow"]{transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+[data-r~="row"]:hover [data-r~="arrow"]{transform:translateX(6px)}
+[data-r~="zoom"]{transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+[data-r~="row"]:hover [data-r~="zoom"]{transform:scale(1.08)}
+[data-r~="hero-photo"]{animation:heroin 1.1s cubic-bezier(.2,.7,.2,1) both}
+@keyframes heroin{from{opacity:0;transform:scale(1.06)}to{opacity:1;transform:none}}
+[data-r~="rank"]{transition:transform .25s cubic-bezier(.2,.8,.2,1.4)}
+[data-r~="row"]:hover [data-r~="rank"]{transform:scale(1.08) rotate(-4deg)}
 
 @keyframes rise{from{opacity:0;transform:translateY(36px)}to{opacity:1;transform:none}}
 [data-r~="rise"]{animation:rise .9s cubic-bezier(.2,.7,.2,1) both}
@@ -83,6 +94,11 @@ html.js [data-r~="reveal-scale"]:not([data-in]){opacity:0;transform:scale(.92)}
   [data-r~="tile-2"]{flex-basis:44%!important;min-width:0!important}
 }
 @media (min-width: 641px){[data-r~="only-sm"]{display:none!important}}
+@media (min-width: 901px){[data-r~="sticky"]{position:sticky;top:24px}}
+@media print{
+  [data-r~="noprint"],header,footer,nav{display:none!important}
+  html.js [data-r]:not([data-in]){opacity:1!important;transform:none!important}
+}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
   html.js [data-r~="reveal"]:not([data-in]),html.js [data-r~="reveal-left"]:not([data-in]),html.js [data-r~="reveal-scale"]:not([data-in]){opacity:1;transform:none}

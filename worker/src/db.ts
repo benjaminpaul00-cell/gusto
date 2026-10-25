@@ -90,6 +90,7 @@ export async function loadPlannerData(env: Env, store: string): Promise<PlannerD
       price: p.price,
       regularPrice: p.regular_price,
       discounted: !!p.discounted,
+      deal: p.deal === "vrai" || p.deal === "plancher" ? p.deal : null,
     });
   }
   // Ingrédient non suivi dans cette bannière : formats relevés dans les autres bannières, au prix régulier

@@ -4,6 +4,8 @@ import { getImage } from "./images";
 import { cleanup, enqueueDietTagging, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
 import type { StoreMatch } from "./epiceries";
 import { planMenu } from "./planner";
+import { getSection, importExternal, listSection, moderate, moderationPage, priceSection, rateSection, searchRecipe, submitRecipe, setSectionPhoto, underLimit } from "./section";
+import { lookupIngredientPrice } from "./ingredientPrice";
 import { imagePrompt, mistralImage } from "./ai";
 
 const json = (env: Env, body: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -48,6 +50,30 @@ async function handlePlan(req: Request, env: Env): Promise<Response> {
   const base = env.PUBLIC_API_URL.replace(/\/$/, "");
   const result = planMenu(request, data, (r) => (r.image ? `${base}/img/${r.image}` : null));
   return json(env, result, result.ok ? 200 : result.reason === "invalid" ? 400 : 200);
+}
+
+async function handleSection(req: Request, env: Env, path: string): Promise<Response> {
+  const url = new URL(req.url);
+  const ip = req.headers.get("CF-Connecting-IP") ?? "inconnu";
+  const body = async () => (await req.json().catch(() => null)) as any;
+  const param = (k: string) => url.searchParams.get(k) ?? undefined;
+  if (path === "/api/section" && req.method === "GET")
+    return json(env, await listSection(env, { source: param("source"), sort: param("tri"), q: param("q"), limit: Number(param("limit")) || undefined, offset: Number(param("offset")) || undefined }));
+  if (path === "/api/section/recherche" && req.method === "POST") return json(env, await searchRecipe(env, String((await body())?.q ?? ""), ip));
+  if (path === "/api/section/partager" && req.method === "POST") return json(env, await submitRecipe(env, await body(), ip));
+  const m = path.match(/^\/api\/section\/([^/]+)(?:\/(prix|vote))?$/);
+  if (!m) return json(env, { ok: false, message: "Introuvable" }, 404);
+  const id = decodeURIComponent(m[1]);
+  if (!m[2] && req.method === "GET") {
+    const r = await getSection(env, id, param("votant"));
+    return r ? json(env, r) : json(env, { ok: false, message: "Recette introuvable" }, 404);
+  }
+  if (m[2] === "prix" && req.method === "POST") {
+    const r = await priceSection(env, id, await body());
+    return r ? json(env, r) : json(env, { ok: false, message: "Recette introuvable" }, 404);
+  }
+  if (m[2] === "vote" && req.method === "POST") return json(env, await rateSection(env, id, await body(), ip));
+  return json(env, { ok: false, message: "Introuvable" }, 404);
 }
 
 async function handleImage(key: string, env: Env): Promise<Response> {
@@ -117,6 +143,19 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
   const back = () => Response.redirect(new URL(`/admin/images?token=${encodeURIComponent(token)}`, req.url).toString(), 303);
 
   if (path === "/admin/images") return adminImages(env, token);
+  // Section Recettes : modération des recettes partagées et import des recettes externes
+  if (path === "/admin/moderation") return new Response(await moderationPage(env, token), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  const mod = path.match(/^\/admin\/moderation\/([^/]+)\/(publier|refuser)$/);
+  if (mod && req.method === "POST") {
+    await moderate(env, decodeURIComponent(mod[1]), mod[2] as "publier" | "refuser");
+    return Response.redirect(new URL(`/admin/moderation?token=${encodeURIComponent(token)}`, req.url).toString(), 303);
+  }
+  if (path === "/admin/import-externes" && req.method === "POST") {
+    const body: any = await req.json().catch(() => null);
+    return json(env, await importExternal(env, Array.isArray(body?.recipes) ? body.recipes : []));
+  }
+  const photo = path.match(/^\/admin\/section-photo\/([^/]+)$/);
+  if (photo && req.method === "POST") return json(env, await setSectionPhoto(env, decodeURIComponent(photo[1]), await req.json().catch(() => null)));
   if (path === "/admin/status") return adminStatus(env);
   // Modèles disponibles chez Groq (pour choisir GROQ_MODEL quand un modèle est retiré)
   // Diagnostic : épiceries.ca répond-il au serveur ? (requête normale, identifiée comme Gusto)
@@ -148,7 +187,34 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
     ).bind(Date.now() - 5 * 86400_000, limit).all<{ name: string; search_terms: string | null; categories: string | null }>();
     return json(env, { items: rows.results.map((r) => ({ name: r.name, terms: JSON.parse(r.search_terms || "[]"), categories: JSON.parse(r.categories || "[]") })) });
   }
+  // Produits annoncés en rabais dont l'historique n'a pas été analysé depuis 6 jours (scripts/historique.mjs)
+  if (path === "/admin/prices/discounted") {
+    const limit = Math.min(200, Number(new URL(req.url).searchParams.get("limit")) || 50);
+    const rows = await env.DB.prepare(
+      `SELECT DISTINCT product_id, store, price FROM store_products WHERE discounted = 1 AND (history_at IS NULL OR history_at < ?)
+       ORDER BY product_id, store LIMIT ?`,
+    ).bind(Date.now() - 6 * 86400_000, limit).all<{ product_id: string; store: string; price: number }>();
+    return json(env, { items: rows.results.map((r) => ({ productId: r.product_id, store: r.store, price: r.price })) });
+  }
   if (req.method !== "POST") return new Response("Méthode non permise", { status: 405 });
+
+  // Résultat de l'analyse de l'historique : { items: [{ productId, store, price, regularPrice, lowPrice, discounted, deal }] }
+  if (path === "/admin/prices/history") {
+    const body: any = await req.json().catch(() => null);
+    const n = (x: unknown) => (typeof x === "number" && x > 0 && x < 1000 ? x : null);
+    let saved = 0;
+    for (const it of Array.isArray(body?.items) ? body.items.slice(0, 200) : []) {
+      if (typeof it?.productId !== "string" || typeof it?.store !== "string" || !n(it.price)) continue;
+      const deal = ["vrai", "plancher", "faux"].includes(it.deal) ? it.deal : null;
+      const regular = Math.max(it.price, n(it.regularPrice) ?? it.price);
+      await env.DB.prepare(
+        `UPDATE store_products SET discounted = ?, regular_price = ?, low_price = ?, deal = ?, history_at = ?
+         WHERE product_id = ? AND store = ? AND ABS(price - ?) < 0.005`,
+      ).bind(it.discounted ? 1 : 0, regular, n(it.lowPrice), deal, Date.now(), it.productId, it.store, it.price).run();
+      saved++;
+    }
+    return json(env, { saved });
+  }
 
   // Recueil de recettes (scripts/importer-recueil.mjs) : { recipes: BookRecipe[] }, mis en file par 2
   if (path === "/admin/import" && req.method === "POST") {
@@ -177,7 +243,12 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
       if (typeof it?.ingredient !== "string") continue;
       const exists = await env.DB.prepare("SELECT 1 FROM ingredients WHERE name = ?").bind(it.ingredient).first();
       if (!exists) continue;
-      const matches = (Array.isArray(it.matches) ? it.matches : []).filter(ok).slice(0, 18);
+      // Historique (facultatif) : prix régulier, plus bas prix de l'année et type de rabais, validés
+      const price = (x: unknown) => (typeof x === "number" && x > 0 && x < 1000 ? x : null);
+      const matches = (Array.isArray(it.matches) ? it.matches : []).filter(ok).slice(0, 18).map((m: any): StoreMatch => ({
+        store: m.store, productId: m.productId, productName: m.productName, sizeQty: m.sizeQty, sizeUnit: m.sizeUnit, price: m.price, discounted: !!m.discounted,
+        ...("regularPrice" in m ? { regularPrice: price(m.regularPrice), lowPrice: price(m.lowPrice), deal: ["vrai", "plancher", "faux"].includes(m.deal) ? m.deal : null } : {}),
+      }));
       await savePrices(env, it.ingredient, matches);
       saved += matches.length;
     }
@@ -210,6 +281,14 @@ const app = {
 
     try {
       if (path === "/api/plan" && req.method === "POST") return await handlePlan(req, env);
+      // Section Recettes
+      if (path.startsWith("/api/section")) return await handleSection(req, env, path);
+      // Prix d'un ingrédient saisi à la main, par épicerie
+      if (path === "/api/prix-ingredient" && req.method === "GET") {
+        const ip = req.headers.get("CF-Connecting-IP") ?? "inconnu";
+        const res = await lookupIngredientPrice(env, url.searchParams.get("q") ?? "", () => underLimit(env, ip, "prix", 40));
+        return json(env, res, res.ok ? 200 : 400);
+      }
       if (path === "/api/health") return json(env, { ok: true });
       if (path.startsWith("/img/")) return await handleImage(decodeURIComponent(path.slice(5)), env);
       if (path.startsWith("/admin/")) return await handleAdmin(req, env, path);

@@ -1,6 +1,7 @@
 // Gabarit HTML unique pour le PDF : utilisé sur le web (impression) et sur mobile (expo-print).
 // Identité Gusto : cobalt, citron, rose, marine ; logo « mon gusto » chargé depuis le site.
 import { MEALS, STORES, type ListItem, type PlanResponse } from "../../../../shared/options";
+import { dealText } from "../deal";
 
 type Plan = Extract<PlanResponse, { ok: true }>;
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -31,7 +32,7 @@ export function buildPdfHtml(plan: Plan, opts: { list: boolean; recipes: boolean
     let section = "";
     return items.map((i) => {
       const head = i.section !== section ? `<tr class="sec"><td colspan="3">${esc((section = i.section))}</td></tr>` : "";
-      const badges = `${i.discounted ? '<span class="b sale">rabais</span>' : ""}${i.estimated ? '<span class="b est">prix estimé</span>' : ""}`;
+      const badges = `${i.discounted ? `<span class="b sale">${esc(dealText(i) ?? "rabais")}</span>` : ""}${i.estimated ? '<span class="b est">prix estimé</span>' : ""}`;
       return `${head}<tr><td class="box"><span></span></td><td>${i.packages} × ${esc(i.product)} <small>${esc(i.size)}</small>${badges}</td><td class="r">${money(i.total)}</td></tr>`;
     }).join("");
   };

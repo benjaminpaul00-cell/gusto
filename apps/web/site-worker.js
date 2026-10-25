@@ -1,6 +1,5 @@
 // Site Gusto : sert les pages statiques et renvoie les anciennes adresses vers mongusto.ca.
 // - www.mongusto.ca et gusto.<compte>.workers.dev → https://mongusto.ca (redirection permanente, chemin conservé)
-// - /recettes (section retirée) → accueil
 const HOME = "mongusto.ca";
 
 export default {
@@ -12,9 +11,6 @@ export default {
       url.protocol = "https:";
       url.port = "";
       return Response.redirect(url.toString(), 301);
-    }
-    if (url.pathname === "/recettes" || url.pathname.startsWith("/recettes/")) {
-      return Response.redirect(`${url.origin}/`, 301);
     }
     return env.ASSETS.fetch(req);
   },

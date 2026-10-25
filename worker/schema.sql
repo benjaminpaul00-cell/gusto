@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS store_products (
   regular_price REAL NOT NULL,
   discounted INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL,
+  low_price REAL,                -- plus bas prix des 12 derniers mois (historique épiceries.ca)
+  deal TEXT,                     -- vrai, plancher (plus bas de l'année) ou faux rabais
+  history_at INTEGER,            -- dernière analyse de l'historique
   PRIMARY KEY (ingredient, store, product_id) -- plusieurs formats par bannière
 );
 CREATE INDEX IF NOT EXISTS store_products_store ON store_products (store);
@@ -67,3 +70,42 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   day TEXT NOT NULL,
   count INTEGER NOT NULL
 );
+
+-- Section Recettes : recherches IA (mises en cache), recettes de la communauté (modérées) et recettes externes (attribuées)
+CREATE TABLE IF NOT EXISTS section_recipes (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL,          -- ia | communaute | externe
+  status TEXT NOT NULL,          -- en_attente | publiee | refusee
+  title TEXT NOT NULL,
+  servings INTEGER NOT NULL,
+  servings_estimated INTEGER NOT NULL DEFAULT 0, -- 1 : la source n'indique pas de portions
+  prep_min INTEGER,
+  cook_min INTEGER,
+  temperature TEXT,              -- ex. « 190 °C »
+  ingredients TEXT NOT NULL,     -- JSON : [{qty, unit, name, display}] (unit : g, ml ou unite)
+  steps TEXT NOT NULL,           -- JSON : ["..."]
+  author TEXT,                   -- pseudo (communauté) ou auteur original (externe)
+  source_name TEXT,              -- site source (externe)
+  source_url TEXT,               -- lien vers la recette originale (externe)
+  photo_key TEXT,                -- photo : partagée (communauté) ou libre de droits (externe)
+  source_rating REAL,            -- note de départ du site source (sur 5)
+  source_rating_count INTEGER NOT NULL DEFAULT 0, -- nombre d'avis sur le site source
+  photo_credit TEXT, -- photo libre de droits : JSON {creator, license, source, landing}
+  query_key TEXT,                -- recherche IA normalisée (cache)
+  ip_hash TEXT,                  -- hachage de l'IP de l'envoi (anti-abus, aucune IP en clair)
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS section_recipes_list ON section_recipes (status, source);
+CREATE UNIQUE INDEX IF NOT EXISTS section_recipes_query ON section_recipes (query_key) WHERE query_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS section_recipes_url ON section_recipes (source_url) WHERE source_url IS NOT NULL;
+
+-- Étoiles sans compte : un vote par navigateur (identifiant aléatoire) et par IP (hachée) pour chaque recette
+CREATE TABLE IF NOT EXISTS ratings (
+  recipe_id TEXT NOT NULL,
+  voter TEXT NOT NULL,
+  ip_hash TEXT NOT NULL,
+  stars INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (recipe_id, voter)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ratings_ip ON ratings (recipe_id, ip_hash);

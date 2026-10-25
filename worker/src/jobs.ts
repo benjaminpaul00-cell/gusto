@@ -5,7 +5,7 @@
 import { CUISINES, DIETS, MEALS, type Unit } from "../../shared/options";
 import { AllProvidersFailed, generateImage, generateJson, imagePrompt } from "./ai";
 import { computeStyles, enqueue, now, type Env } from "./db";
-import { getProduct, isFree, matchIngredient, type StoreMatch } from "./epiceries";
+import { analyzeHistory, getHistory, getProduct, isFree, matchIngredient, withHistory, type PriceInsight, type StoreMatch } from "./epiceries";
 import { deleteImage, putImage } from "./images";
 
 const UNITS: Unit[] = ["g", "ml", "unite"];
@@ -223,7 +223,7 @@ export async function enqueueDietTagging(env: Env) {
   return { recipes: rows.results.length, jobs };
 }
 
-async function ensureIngredient(env: Env, name: string) {
+export async function ensureIngredient(env: Env, name: string) {
   const res = await env.DB.prepare("INSERT OR IGNORE INTO ingredients (name, updated_at) VALUES (?, ?)").bind(name, now()).run();
   if (res.meta.changes > 0) await enqueue(env, "resolve_ingredient", { name });
 }
@@ -258,7 +258,7 @@ Format : {"section":"","pantry":false,"unitWeightG":null,"searchTerms":[""],"cat
   // Dans ce cas, les prix arrivent par scripts/prix.mjs, lancé depuis un ordinateur (POST /admin/prices).
   try {
     if (isFree(p.name)) return;
-    const matches = await matchIngredient([...info.searchTerms, p.name], cats);
+    const matches = await withHistory(await matchIngredient([...info.searchTerms, p.name], cats));
     await savePrices(env, p.name, matches);
   } catch {
     /* prix récupérés plus tard depuis un ordinateur */
@@ -278,16 +278,16 @@ export async function savePrices(env: Env, ingredient: string, matches: StoreMat
   }
   const stmts = matches.map((m) =>
     env.DB.prepare(
-      `INSERT INTO store_products (ingredient, store, product_id, product_name, size_qty, size_unit, price, regular_price, discounted, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO store_products (ingredient, store, product_id, product_name, size_qty, size_unit, price, regular_price, discounted, updated_at, low_price, deal, history_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(ingredient, store, product_id) DO UPDATE SET product_name = excluded.product_name,
          size_qty = excluded.size_qty, size_unit = excluded.size_unit, price = excluded.price, discounted = excluded.discounted,
-         regular_price = CASE WHEN excluded.discounted = 0 THEN excluded.price
-                              ELSE MAX(store_products.regular_price, excluded.price) END,
+         regular_price = excluded.regular_price, low_price = excluded.low_price, deal = excluded.deal, history_at = excluded.history_at,
          updated_at = excluded.updated_at`,
     )
-      // Prix régulier inconnu pour un produit en rabais : on le majore de 25 % par prudence.
-      .bind(ingredient, m.store, m.productId, m.productName, m.sizeQty, m.sizeUnit, m.price, m.discounted ? m.price * 1.25 : m.price, m.discounted ? 1 : 0, t),
+      // Prix régulier : celui de l'historique (withHistory). Inconnu : le prix actuel, sans majoration inventée.
+      .bind(ingredient, m.store, m.productId, m.productName, m.sizeQty, m.sizeUnit, m.price, Math.max(m.price, m.regularPrice ?? m.price),
+        m.discounted ? 1 : 0, t, m.lowPrice ?? null, m.deal ?? null, m.regularPrice !== undefined ? t : null),
   );
   // Nouvelle liste complète : les anciens produits (peut-être mal choisis) sont remplacés.
   if (matches.length) stmts.unshift(env.DB.prepare("DELETE FROM store_products WHERE ingredient = ?").bind(ingredient));
@@ -331,13 +331,19 @@ async function refreshPrices(env: Env, p: { offset: number }) {
     try {
       const detail = await getProduct(product_id);
       for (const sp of detail.prices ?? []) {
-        // Prix régulier : le prix non soldé le plus récent ; sinon on garde l'ancien (jamais plus bas que le prix actuel).
+        // En rabais : vrai prix régulier et vrai rabais d'après l'historique ; sinon le prix actuel est le prix régulier.
+        let h: PriceInsight = { regularPrice: sp.price, lowPrice: null, discounted: false, deal: null };
+        let checked: number | null = now();
+        if (sp.discounted) {
+          try { h = analyzeHistory(await getHistory(product_id, sp.store), sp); }
+          catch { h = { regularPrice: null, lowPrice: null, discounted: true, deal: null }; checked = null; }
+        }
         await env.DB.prepare(
-          `UPDATE store_products SET price = ?, discounted = ?,
-             regular_price = CASE WHEN ? = 0 THEN ? ELSE MAX(regular_price, ?) END, updated_at = ?
+          `UPDATE store_products SET price = ?, discounted = ?, regular_price = ?, low_price = COALESCE(?, low_price), deal = ?,
+             history_at = COALESCE(?, history_at), updated_at = ?
            WHERE product_id = ? AND store = ?`,
         )
-          .bind(sp.price, sp.discounted ? 1 : 0, sp.discounted ? 1 : 0, sp.price, sp.price, now(), product_id, sp.store)
+          .bind(sp.price, h.discounted ? 1 : 0, Math.max(sp.price, h.regularPrice ?? sp.price), h.lowPrice, h.deal, checked, now(), product_id, sp.store)
           .run();
       }
     } catch {

@@ -7,6 +7,8 @@ import { Logo } from "./Logo";
 import { Button } from "./ui";
 
 const NAV = [
+  { href: "/recettes", label: "Recettes" },
+  { href: "/prix", label: "Prix" },
   { href: "/#comment", label: "Comment ça marche" },
   { href: "/guides", label: "Guides" },
   { href: "/cuisines", label: "Cuisines" },

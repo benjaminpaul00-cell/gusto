@@ -50,6 +50,7 @@ export interface StoreProduct {
   price: number; // prix actuel (rabais inclus)
   regularPrice: number; // prix sans rabais (≥ price)
   discounted: boolean;
+  deal?: "vrai" | "plancher" | null; // vrai rabais, ou plus bas prix de l'année (historique)
   estimated?: boolean; // produit non suivi dans cette bannière : prix le plus élevé relevé ailleurs
 }
 
@@ -243,6 +244,9 @@ export function costPlan(slots: Slot[], data: PlannerData, weeks: number, pantry
         unitPrice: price,
         total: line,
         discounted: n.source === "store" && w === 1 && !!product?.discounted,
+        // Rabais réel : prix régulier de l'emballage et type de rabais, pour afficher l'économie
+        ...(n.source === "store" && w === 1 && product?.discounted && product.regularPrice > product.price + 0.004
+          ? { regularPrice: product.regularPrice, ...(product.deal ? { deal: product.deal } : {}) } : {}),
         estimated: n.source === "store" && !!product?.estimated,
         ...(n.source === "store" && product ? { store: product.store as ListItem["store"] } : {}),
         section: info?.section ?? "Autres",

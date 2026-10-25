@@ -33,6 +33,8 @@ const COLUMNS = [
     { href: "/a-propos", label: "À propos" },
   ] },
   { title: "Ressources", links: [
+    { href: "/recettes", label: "Recettes" },
+    { href: "/prix", label: "Comparer un prix" },
     { href: "/guides", label: "Guides" },
     { href: "/cuisines", label: "Cuisines" },
     { href: "/guides/epicerie-petit-budget", label: "Épicerie à petit budget" },

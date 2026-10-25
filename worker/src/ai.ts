@@ -59,10 +59,18 @@ async function withRetry(call: () => Promise<string>): Promise<string> {
 }
 
 async function workersAiText(env: Env, prompt: string): Promise<string> {
-  const out: any = await env.AI.run(env.WORKERS_AI_TEXT_MODEL as any, {
+  const run = (json: boolean) => env.AI.run(env.WORKERS_AI_TEXT_MODEL as any, {
     messages: [{ role: "user", content: prompt }],
     max_tokens: 4096,
-  });
+    // Mode JSON : le modèle doit produire du JSON valide (sinon il ajoute parfois du texte ou des guillemets mal échappés)
+    ...(json ? { response_format: { type: "json_object" } } : {}),
+  } as any);
+  let out: any;
+  try {
+    out = await run(true);
+  } catch {
+    out = await run(false); // modèle sans mode JSON
+  }
   return typeof out?.response === "string" ? out.response : JSON.stringify(out?.response ?? out);
 }
 

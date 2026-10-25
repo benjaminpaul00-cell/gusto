@@ -32,6 +32,61 @@ export const searchProducts = (q: string, limit = 8, category?: number) =>
 
 export const getProduct = (id: string) => get<EpProduct>({ endpoint: "product", id });
 
+// ---------- Historique des prix : vrai prix régulier et vrais rabais ----------
+
+export interface EpObservation { store: string; price: number; discounted: boolean; size?: string | null; timestamp: number }
+/** Relevés d'un produit dans une bannière (les plus récents, en ordre chronologique). */
+export const getHistory = (id: string, store: string, limit = 200) =>
+  get<{ history: EpObservation[] }>({ endpoint: "history", id, store, limit: String(limit) }).then((d) => d.history ?? []);
+
+/** « vrai » : rabais réel ; « plancher » : plus bas prix de l'année ; « faux » : annoncé en rabais, mais au prix habituel. */
+export type Deal = "vrai" | "plancher" | "faux";
+export interface PriceInsight { regularPrice: number | null; lowPrice: number | null; discounted: boolean; deal: Deal | null }
+
+const DAY = 86400;
+const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
+
+/**
+ * Prix régulier = médiane des derniers relevés SANS rabais (6 mois, sinon 12). Un rabais compte s'il est
+ * au moins 3 % sous ce prix ; sinon c'est un faux rabais. Sans relevé régulier, le prix régulier reste inconnu.
+ */
+export function analyzeHistory(obs: EpObservation[], current: { price: number; discounted: boolean }, nowSec = Date.now() / 1000): PriceInsight {
+  // Même format que le relevé le plus récent (un ancien format plus petit fausserait la comparaison)
+  const size = obs.at(-1)?.size ?? null;
+  const same = obs.filter((o) => o.price > 0 && (!size || !o.size || o.size === size));
+  const year = same.filter((o) => o.timestamp >= nowSec - 365 * DAY);
+  const regularIn = (days: number) => year.filter((o) => !o.discounted && o.timestamp >= nowSec - days * DAY).slice(-6).map((o) => o.price);
+  const regs = regularIn(180).length ? regularIn(180) : regularIn(365);
+  const regular = regs.length ? Math.round(median(regs) * 100) / 100 : null;
+  const low = year.length ? Math.min(...year.map((o) => o.price), current.price) : null;
+  if (!current.discounted) return { regularPrice: current.price, lowPrice: low, discounted: false, deal: null };
+  if (regular === null) {
+    // « En rabais » sans arrêt depuis au moins 8 semaines, au même prix : c'est son prix habituel
+    const recent = year.filter((o) => o.timestamp >= nowSec - 120 * DAY);
+    const span = recent.length ? (recent.at(-1)!.timestamp - recent[0].timestamp) / DAY : 0;
+    const steady = recent.length >= 3 && span >= 56 && recent.every((o) => o.discounted && Math.abs(o.price - current.price) <= current.price * 0.03);
+    if (steady) return { regularPrice: current.price, lowPrice: low, discounted: false, deal: "faux" };
+    return { regularPrice: null, lowPrice: low, discounted: true, deal: null };
+  }
+  if (current.price > regular * 0.97) return { regularPrice: current.price, lowPrice: low, discounted: false, deal: "faux" };
+  return { regularPrice: regular, lowPrice: low, discounted: true, deal: low !== null && current.price <= low * 1.005 ? "plancher" : "vrai" };
+}
+
+/** Ajoute le vrai prix régulier aux produits annoncés en rabais (1 appel « history » par produit en rabais). */
+export async function withHistory(matches: StoreMatch[]): Promise<StoreMatch[]> {
+  const out: StoreMatch[] = [];
+  for (const m of matches) {
+    if (!m.discounted) { out.push({ ...m, regularPrice: m.price, deal: null }); continue; }
+    try {
+      const h = analyzeHistory(await getHistory(m.productId, m.store), m);
+      out.push({ ...m, discounted: h.discounted, regularPrice: h.regularPrice, lowPrice: h.lowPrice, deal: h.deal });
+    } catch {
+      out.push({ ...m, regularPrice: null, deal: null }); // historique indisponible : prix régulier inconnu
+    }
+  }
+  return out;
+}
+
 /** « 2 L » → {2000, ml} ; « 900 g » → {900, g} ; « 12 unités » → {12, unite}. */
 export function parseSize(size?: string): { qty: number; unit: Unit } | null {
   if (!size) return null;
@@ -136,6 +191,10 @@ export interface StoreMatch {
   sizeUnit: Unit;
   price: number;
   discounted: boolean;
+  // Tirés de l'historique des prix (analyzeHistory) quand le produit est annoncé en rabais
+  regularPrice?: number | null; // vrai prix régulier (null : inconnu)
+  lowPrice?: number | null; // plus bas prix des 12 derniers mois
+  deal?: Deal | null;
 }
 
 // Mots qui trahissent un produit transformé (croustilles à l'avocat, muffins aux bleuets…).

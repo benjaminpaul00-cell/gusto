@@ -121,6 +121,8 @@ export interface ListItem {
   unitPrice: number;
   total: number;
   discounted: boolean;
+  regularPrice?: number; // prix régulier de l'emballage, quand le rabais est réel (historique des prix)
+  deal?: "vrai" | "plancher"; // plancher : plus bas prix de l'année
   estimated?: boolean; // prix d'une autre bannière (le plus élevé), faute de relevé dans celle-ci
   store?: StoreId; // épicerie où acheter cet article (plusieurs épiceries choisies)
   section: string;
