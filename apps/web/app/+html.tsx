@@ -94,6 +94,7 @@ html.js [data-r~="reveal-scale"]:not([data-in]){opacity:0;transform:scale(.92)}
   [data-r~="tile-2"]{flex-basis:44%!important;min-width:0!important}
 }
 @media (min-width: 641px){[data-r~="only-sm"]{display:none!important}}
+@media (min-width: 901px){[data-r~="only-md"]{display:none!important}}
 @media (min-width: 901px){[data-r~="sticky"]{position:sticky;top:24px}}
 @media print{
   [data-r~="noprint"],header,footer,nav{display:none!important}
