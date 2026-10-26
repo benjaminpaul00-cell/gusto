@@ -3,10 +3,18 @@
 import { Link, usePathname } from "expo-router";
 import { ArrowRight, BookOpen, Compass, HelpCircle, Lightbulb, Tag } from "lucide-react-native";
 import { useRef } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Image, ScrollView, Text, View } from "react-native";
 import { font, r, space, useTheme, WIDE } from "../theme";
-import { Logo } from "./Logo";
+import { Logo, LOGO_RATIO } from "./Logo";
 import { Button } from "./ui";
+
+// Fleurdelisé hissé sur un mât (scripts/drapeau-mat.mjs) : le pied du mât passe derrière la toque du chef
+const FLAG = require("../../assets/drapeau-mat.png");
+const LOGO_SIZE = 46;
+const LOGO_H = LOGO_SIZE * 1.4;
+const LOGO_W = LOGO_H * LOGO_RATIO;
+const FLAG_W = 60;
+const FLAG_H = FLAG_W * (410 / 520); // proportions de assets/drapeau-mat.png
 
 const NAV = [
   { href: "/recettes", label: "Recettes", icon: BookOpen },
@@ -25,10 +33,15 @@ export function SiteHeader({ onCta }: { onCta?: () => void }) {
   const active = (href: string) => !href.includes("#") && (path === href || path.startsWith(`${href}/`) || (href === "/recettes" && path === "/recette"));
   return (
     <View role="banner" style={{ backgroundColor: t.bg, borderBottomWidth: 2, borderBottomColor: t.edge, zIndex: 10 }}>
-      <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), height: 88, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Link href="/" accessibilityLabel="Gusto, accueil" {...r("wiggle")}>
-          <Logo size={47} />
-        </Link>
+      <View {...r("gutter")} style={{ width: "100%", maxWidth: WIDE, alignSelf: "center", paddingHorizontal: space(8), height: 96, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        {/* Logo et drapeau du Québec : le mât est planté derrière la toque, le drapeau flotte au-dessus, à droite */}
+        <View style={{ width: LOGO_W + 28, height: LOGO_H, marginTop: 18 }}>
+          <Image {...r("flag")} source={FLAG} accessibilityLabel="Drapeau du Québec" resizeMode="contain" accessibilityIgnoresInvertColors
+            style={{ position: "absolute", left: LOGO_W * 0.65, top: LOGO_H * 0.43 - FLAG_H, width: FLAG_W, height: FLAG_H }} />
+          <Link href="/" accessibilityLabel="Gusto, accueil" {...r("wiggle")} style={{ position: "relative", zIndex: 1 }}>
+            <Logo size={LOGO_SIZE} />
+          </Link>
+        </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space(8) }}>
           <View role="navigation" {...r("hide-md")} style={{ flexDirection: "row", gap: space(7) }}>
             {NAV.map((n) => (

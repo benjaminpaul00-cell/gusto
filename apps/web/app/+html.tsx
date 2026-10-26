@@ -30,6 +30,10 @@ html.js [data-r~="reveal-scale"]:not([data-in]){opacity:0;transform:scale(.92)}
 [data-r~="dim"]{transition:opacity .15s ease}
 [data-r~="dim"]:hover{opacity:.7}
 [data-r~="wiggle"]:hover{animation:wiggle .5s ease}
+/* Drapeau du Québec : il flotte un peu au survol */
+[data-r~="flag"]{transform-origin:6% 100%}
+[data-r~="flag"]:hover{animation:flagwave 1.6s ease-in-out}
+@keyframes flagwave{0%,100%{transform:none}30%{transform:rotate(-3deg)}65%{transform:rotate(2deg)}}
 /* Lignes de la liste de recettes : fond teinté et flèche qui glisse au survol */
 [data-r~="row"]{transition:background-color .2s ease}
 [data-r~="row"]:hover{background-color:rgba(43,68,255,.06)}
