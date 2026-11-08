@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Pub Instagram Gusto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=block" rel="stylesheet">
+<style>
+  :root { --ink:#0E1030; --cobalt:#2B44FF; --pink:#FF5FA2; --lemon:#FFE14D; --cream:#FFF4E2; --paper:#FFFFFF; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:1080px; height:1350px; overflow:hidden; background:var(--cream); }
+  body { font-family:"Plus Jakarta Sans", sans-serif; color:var(--ink); position:relative; }
+
+  /* Fond : trame de points discrète et grand disque cobalt derrière le plat */
+  .dots { position:absolute; inset:0; background-image:radial-gradient(rgba(14,16,48,.10) 1.6px, transparent 1.7px); background-size:26px 26px; }
+  .sun { position:absolute; width:900px; height:900px; border-radius:50%; background:var(--cobalt); right:-380px; top:480px; }
+  .ring { position:absolute; width:1060px; height:1060px; border-radius:50%; border:3px dashed rgba(14,16,48,.18); right:-460px; top:400px; }
+
+  /* Logo et drapeau, comme sur le site : le mât derrière la toque */
+  .brand { position:absolute; left:64px; top:52px; width:300px; height:194px; }
+  .brand .flag { position:absolute; left:196px; top:-42px; width:150px; transform:rotate(8deg); }
+  .brand .logo { position:absolute; inset:0; width:300px; z-index:1; }
+
+  .sticker { position:absolute; right:70px; top:62px; width:190px; height:190px; border-radius:50%; background:var(--lemon); border:5px solid var(--ink); box-shadow:8px 8px 0 var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; transform:rotate(12deg); text-align:center; }
+  .sticker b { font-weight:800; font-size:50px; line-height:.95; letter-spacing:-1.5px; }
+  .sticker span { font-weight:700; font-size:21px; margin-top:6px; }
+
+  /* Titre */
+  h1 { position:absolute; left:64px; top:282px; width:640px; font-weight:800; font-size:72px; line-height:.98; letter-spacing:-3px; }
+  h1 em { display:block; font-family:"Instrument Serif", serif; font-weight:400; font-size:108px; line-height:.88; letter-spacing:-2px; color:var(--cobalt); margin:6px 0 4px -4px; }
+  h1 .hl { background:linear-gradient(transparent 58%, var(--pink) 58%, var(--pink) 90%, transparent 90%); padding:0 4px; margin-left:-4px; }
+
+  /* Plat vedette */
+  .hero { position:absolute; width:600px; height:600px; right:-60px; top:600px; border-radius:50%; overflow:hidden; border:7px solid var(--ink); box-shadow:18px 18px 0 var(--ink); }
+  .hero img { width:100%; height:100%; object-fit:cover; transform:scale(1.18) translate(3%, 2%); }
+  .tag { position:absolute; z-index:5; left:560px; top:1056px; background:var(--lemon); border:5px solid var(--ink); border-radius:18px; box-shadow:7px 7px 0 var(--ink); padding:14px 22px 14px 52px; transform:rotate(-6deg); }
+  .tag::before { content:""; position:absolute; left:18px; top:50%; width:18px; height:18px; margin-top:-9px; border-radius:50%; background:var(--cream); border:4px solid var(--ink); }
+  .tag small { display:block; font-weight:700; font-size:20px; }
+  .tag b { font-weight:800; font-size:46px; letter-spacing:-1.5px; line-height:1; }
+  .tag b i { font-style:normal; font-size:24px; font-weight:700; letter-spacing:0; }
+
+  /* Mini-plats */
+  .minis { position:absolute; left:64px; top:640px; display:flex; gap:22px; }
+  .mini { width:136px; text-align:center; }
+  .mini .ph { width:136px; height:136px; border-radius:50%; overflow:hidden; border:5px solid var(--ink); box-shadow:6px 6px 0 var(--ink); background:#fff; }
+  .mini .ph img { width:100%; height:100%; object-fit:cover; transform:scale(1.25); }
+  .mini p { margin-top:14px; font-weight:800; font-size:21px; line-height:1.1; }
+  .mini p span { display:block; font-weight:600; font-size:18px; color:var(--cobalt); margin-top:3px; }
+
+  /* Reçu : budget respecté */
+  .receipt { position:absolute; z-index:4; left:64px; top:860px; width:470px; background:var(--paper); border:5px solid var(--ink); border-radius:26px; box-shadow:12px 12px 0 var(--pink); padding:24px 30px 26px; transform:rotate(-2deg); }
+  .receipt .row { display:flex; justify-content:space-between; align-items:baseline; font-weight:600; font-size:23px; }
+  .receipt .row b { font-weight:800; font-size:26px; font-variant-numeric:tabular-nums; }
+  .bar { height:26px; border:4px solid var(--ink); border-radius:14px; margin:16px 0 18px; overflow:hidden; background:#EEF0FF; }
+  .bar i { display:block; height:100%; width:95%; background:repeating-linear-gradient(-45deg, var(--cobalt) 0 14px, #4A60FF 14px 28px); border-right:4px solid var(--ink); }
+  .total { display:flex; justify-content:space-between; align-items:center; }
+  .total b { white-space:nowrap; font-weight:800; font-size:48px; letter-spacing:-2px; font-variant-numeric:tabular-nums; }
+  .ok { display:flex; align-items:center; gap:10px; background:#D9F7E4; border:4px solid var(--ink); border-radius:999px; padding:8px 18px 8px 10px; font-weight:800; font-size:21px; white-space:nowrap; }
+  .ok svg { width:30px; height:30px; }
+
+  /* Bandeau d'appel à l'action */
+  .band { position:absolute; left:0; right:0; bottom:0; height:150px; background:var(--ink); display:flex; align-items:center; justify-content:space-between; padding:0 64px; }
+  .band p { color:#fff; font-weight:600; font-size:24px; line-height:1.3; }
+  .band p b { display:block; font-weight:800; font-size:34px; letter-spacing:-.5px; }
+  .cta { display:flex; align-items:center; gap:14px; background:var(--pink); color:var(--ink); border:5px solid #fff; border-radius:999px; padding:20px 34px; font-weight:800; font-size:31px; box-shadow:7px 7px 0 var(--lemon); white-space:nowrap; }
+  .cta svg { width:32px; height:32px; }
+  .chip { position:absolute; right:84px; top:330px; background:var(--pink); border:5px solid var(--ink); border-radius:999px; box-shadow:7px 7px 0 var(--ink); padding:14px 26px; font-weight:800; font-size:27px; transform:rotate(-5deg); text-align:center; line-height:1.15; }
+  .chip span { display:block; font-weight:700; font-size:19px; }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+  <div class="ring"></div>
+  <div class="sun"></div>
+
+  <div class="brand">
+    <img class="flag" src="img/drapeau-mat.png" alt="">
+    <img class="logo" src="img/logo.png" alt="mon gusto">
+  </div>
+  <div class="sticker"><b>100 %</b><b>gratuit</b><span>sans compte</span></div>
+
+  <div class="chip">Ton menu en 2 minutes<span>recettes + liste d’épicerie</span></div>
+
+  <h1>Ton menu de la semaine,<em>sans dépasser</em><span class="hl">ton budget.</span></h1>
+
+  <div class="minis">
+    <div class="mini"><div class="ph"><img src="img/poutine-maison-e43439-mvmftw6d.jpg" alt=""></div><p>Poutine<span>2,95 $</span></p></div>
+    <div class="mini"><div class="ph"><img src="img/spaghetti-a-la-bolognaise-322e6a-mvmhyytj.jpg" alt=""></div><p>Spaghetti<span>2,40 $</span></p></div>
+    <div class="mini"><div class="ph"><img src="img/tacos-au-porc-effiloche-3dfdaf-mvmicren.jpg" alt=""></div><p>Tacos<span>3,05 $</span></p></div>
+  </div>
+
+  <div class="hero"><img src="img/pate-chinois-ead50f-mvmftdsh.jpg" alt=""></div>
+  <div class="tag"><small>Pâté chinois</small><b>2,84 $<i> / portion</i></b></div>
+
+  <div class="receipt">
+    <div class="row"><span>Ton budget</span><b>150,00 $</b></div>
+    <div class="bar"><i></i></div>
+    <div class="total">
+      <div><div class="row" style="font-size:20px"><span>Ta facture</span></div><b>142,37 $</b></div>
+      <div class="ok"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#1DB954" stroke="#0E1030" stroke-width="2"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>Jamais plus</div>
+    </div>
+  </div>
+
+  <div class="band">
+    <p><b>Les vrais prix de ton épicerie.</b>Maxi, IGA, Metro, Super C et plus</p>
+    <div class="cta">mongusto.ca<svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#0E1030" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  </div>
+</body>
+</html>

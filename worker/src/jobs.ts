@@ -6,6 +6,7 @@ import { CUISINES, DIETS, MEALS, type Unit } from "../../shared/options";
 import { AllProvidersFailed, generateImage, generateJson, imagePrompt } from "./ai";
 import { computeStyles, enqueue, now, type Env } from "./db";
 import { analyzeHistory, getHistory, getProduct, isFree, matchIngredient, withHistory, type PriceInsight, type StoreMatch } from "./epiceries";
+import { findFreePhoto } from "./freePhoto";
 import { deleteImage, putImage } from "./images";
 
 const UNITS: Unit[] = ["g", "ml", "unite"];
@@ -145,6 +146,7 @@ async function saveRecipe(env: Env, r: AiRecipe, cuisine: string, meal: string) 
       .run();
     for (const i of ingredients) await ensureIngredient(env, i.name);
     await enqueue(env, "gen_image", { recipeId: id });
+    await enqueue(env, "tag_macros", { ids: [id] }); // glucides et lipides (diète par macros)
   }
 }
 
@@ -216,6 +218,56 @@ Réponds uniquement en JSON : {"recipes":[{"id":"","sans_lactose":false,"diabeti
 }
 
 /** Met en file le classement de toutes les recettes (par lots de 12). */
+// ---------- Glucides et lipides (diète par macros) ----------
+
+/**
+ * Estime les glucides et les lipides par portion. Les calories et les protéines déjà connues restent la référence :
+ * l'estimation est ajustée pour que 4 × protéines + 4 × glucides + 9 × lipides ≈ calories.
+ */
+async function tagMacros(env: Env, p: { ids: string[] }) {
+  const rows = await env.DB.prepare(`SELECT id, name, servings, ingredients, kcal, protein FROM recipes WHERE id IN (${p.ids.map(() => "?").join(",")})`)
+    .bind(...p.ids).all<{ id: string; name: string; servings: number; ingredients: string; kcal: number; protein: number }>();
+  if (!rows.results.length) return;
+  const list = rows.results.map((r) => ({
+    id: r.id, name: r.name, portions: r.servings, kcal_par_portion: r.kcal, proteines_g_par_portion: r.protein,
+    ingredients: (JSON.parse(r.ingredients) as { name: string; qty: number; unit: string; display?: string }[]).map((i) => i.display ?? `${i.qty} ${i.unit} ${i.name}`),
+  }));
+  const prompt = `Tu es nutritionniste. Pour chaque recette, estime les GLUCIDES et les LIPIDES en grammes PAR PORTION,
+d'après les ingrédients et les quantités (pour le nombre de portions indiqué). Les calories et les protéines par portion sont fournies :
+reste cohérent avec elles (4 kcal par gramme de protéines ou de glucides, 9 kcal par gramme de lipides).
+Recettes : ${JSON.stringify(list)}
+Réponds uniquement en JSON : {"recipes":[{"id":"","glucides_g":0,"lipides_g":0}]}`;
+  const out = await generateJson(env, prompt, (x: any): x is { recipes: { id: string; glucides_g: number; lipides_g: number }[] } =>
+    Array.isArray(x?.recipes) && x.recipes.every((r: any) => typeof r?.id === "string" && Number(r.glucides_g) >= 0 && Number(r.lipides_g) >= 0));
+  const stmts = [];
+  for (const r of rows.results) {
+    const a = out.recipes.find((x) => x.id === r.id);
+    if (!a) continue;
+    const { carbs, fat } = fitMacros(r.kcal, r.protein, Number(a.glucides_g), Number(a.lipides_g));
+    stmts.push(env.DB.prepare("UPDATE recipes SET carbs = ?, fat = ? WHERE id = ?").bind(carbs, fat, r.id));
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+}
+
+/** Ajuste glucides et lipides pour que les calories des trois macros égalent celles de la recette. */
+export function fitMacros(kcal: number, protein: number, carbs: number, fat: number) {
+  const rest = Math.max(0, kcal - 4 * protein); // calories qui viennent des glucides et des lipides
+  const est = 4 * carbs + 9 * fat;
+  // Estimation vide : répartition courante d'un repas (55 % des calories restantes en glucides, 45 % en lipides)
+  const k = est > 0 ? rest / est : 0;
+  const c = est > 0 ? carbs * k : (rest * 0.55) / 4;
+  const f = est > 0 ? fat * k : (rest * 0.45) / 9;
+  return { carbs: Math.round(c), fat: Math.round(f) };
+}
+
+/** Met en file l'estimation des macros des recettes qui n'en ont pas encore (par paquets de 12). */
+export async function enqueueMacroTagging(env: Env) {
+  const rows = await env.DB.prepare("SELECT id FROM recipes WHERE carbs IS NULL OR fat IS NULL ORDER BY created_at").all<{ id: string }>();
+  let jobs = 0;
+  for (let i = 0; i < rows.results.length; i += 12) { await enqueue(env, "tag_macros", { ids: rows.results.slice(i, i + 12).map((r) => r.id) }); jobs++; }
+  return { recipes: rows.results.length, jobs };
+}
+
 export async function enqueueDietTagging(env: Env) {
   const rows = await env.DB.prepare("SELECT id FROM recipes ORDER BY created_at").all<{ id: string }>();
   let jobs = 0;
@@ -313,11 +365,14 @@ Réponds uniquement en JSON : {"searchTerms":["","",""],"categories":[1]}`;
 async function genImage(env: Env, p: { recipeId: string }) {
   const r = await env.DB.prepare("SELECT image_prompt, name FROM recipes WHERE id = ?").bind(p.recipeId).first<{ image_prompt: string; name: string }>();
   if (!r) return;
-  const img = await generateImage(env, r.image_prompt || r.name);
-  const key = `recipes/${p.recipeId}-${Date.now().toString(36)}.${img.type.includes("png") ? "png" : "jpg"}`;
+  // D'abord une vraie photo libre de droits du plat, vérifiée ; sinon une image générée
+  const free = env.FREE_PHOTOS === "1" ? await findFreePhoto(env, r.name, r.image_prompt).catch(() => null) : null;
+  const img = free ?? (await generateImage(env, r.image_prompt || r.name));
+  const ext = img.type.includes("png") ? "png" : img.type.includes("webp") ? "webp" : "jpg";
+  const key = `recipes/${p.recipeId}-${Date.now().toString(36)}.${ext}`;
   await putImage(env, key, img.bytes, img.type);
   const old = await env.DB.prepare("SELECT image_key FROM recipes WHERE id = ?").bind(p.recipeId).first<{ image_key: string | null }>();
-  await env.DB.prepare("UPDATE recipes SET image_key = ? WHERE id = ?").bind(key, p.recipeId).run();
+  await env.DB.prepare("UPDATE recipes SET image_key = ?, image_credit = ? WHERE id = ?").bind(key, free ? JSON.stringify(free.credit) : null, p.recipeId).run();
   if (old?.image_key) await deleteImage(env, old.image_key);
 }
 
@@ -356,11 +411,12 @@ async function refreshPrices(env: Env, p: { offset: number }) {
 // ---------- Exécution ----------
 
 // Sous-requêtes maximales estimées par tâche (forfait gratuit : 50 par exécution).
-const COST: Record<string, number> = { gen_recipes: 5, import_recipes: 5, tag_diets: 3, resolve_ingredient: 8, retry_terms: 3, gen_image: 3, refresh_prices: REFRESH_BATCH + 1 };
+const COST: Record<string, number> = { gen_recipes: 5, import_recipes: 5, tag_diets: 3, tag_macros: 3, resolve_ingredient: 8, retry_terms: 3, gen_image: 3, refresh_prices: REFRESH_BATCH + 1 };
 const HANDLERS: Record<string, (env: Env, p: any) => Promise<void>> = {
   gen_recipes: genRecipes,
   import_recipes: importRecipes,
   tag_diets: tagDiets,
+  tag_macros: tagMacros,
   resolve_ingredient: resolveIngredient,
   retry_terms: retryTerms,
   gen_image: genImage,
@@ -374,7 +430,7 @@ export async function runJobs(env: Env, budget = 40, maxJobs = Infinity, onlyKin
   // Les ingrédients d'abord : une recette n'est utilisable que lorsque ses ingrédients ont un prix.
   const jobs = await env.DB.prepare(
     `SELECT * FROM jobs WHERE status = 'queued' AND run_after <= ? AND (?2 IS NULL OR kind = ?2)
-     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'import_recipes' THEN 2 WHEN 'tag_diets' THEN 2 WHEN 'gen_recipes' THEN 3 ELSE 4 END,
+     ORDER BY CASE kind WHEN 'refresh_prices' THEN 0 WHEN 'resolve_ingredient' THEN 1 WHEN 'retry_terms' THEN 1 WHEN 'import_recipes' THEN 2 WHEN 'tag_diets' THEN 2 WHEN 'tag_macros' THEN 2 WHEN 'gen_recipes' THEN 3 ELSE 4 END,
        -- Recettes : d'abord les combinaisons cuisine + repas qui en ont le moins (banque équilibrée)
        CASE kind WHEN 'gen_recipes' THEN (SELECT COUNT(*) FROM recipes r WHERE r.cuisine = json_extract(jobs.payload, '$.cuisine') AND r.meal = json_extract(jobs.payload, '$.meal')) ELSE 0 END,
        id LIMIT 100`,

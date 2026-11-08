@@ -134,7 +134,7 @@ export function matchKnown(name: string, known: Known[]): string | null {
 }
 
 function toRecipe(id: string, servings: number, ings: { qty: number; unit: Unit; name: string }[]): PlannerRecipe {
-  return { id, name: id, cuisine: "", meal: "souper", styles: [], diets: [], servings, ingredients: ings, steps: [], kcal: 0, protein: 0, image: null };
+  return { id, name: id, cuisine: "", meal: "souper", styles: [], diets: [], servings, ingredients: ings, steps: [], kcal: 0, protein: 0, carbs: 0, fat: 0, image: null };
 }
 
 export async function priceSectionRecipe(env: Env, r: { id: string; servings: number; ingredients: string }, body: any) {

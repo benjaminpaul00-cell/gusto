@@ -1,4 +1,5 @@
 import { STYLE_RULES, type StyleId, type Unit } from "../../shared/options";
+import { hasMeat } from "./meat";
 import type { IngredientInfo, PlannerData, PlannerRecipe, StoreProduct } from "./planner";
 
 export interface Env {
@@ -14,6 +15,7 @@ export interface Env {
   GEMINI_MODEL: string;
   GEMINI_IMAGE_MODEL: string;
   MISTRAL_API_KEY?: string;
+  FREE_PHOTOS?: string; // "1" : photos libres de droits avant les images générées
   MISTRAL_MODEL: string;
   WORKERS_AI_TEXT_FALLBACK?: string; // "1" : IA de Cloudflare en dernier recours pour le texte (forfait payant)
   JOB_PARALLEL?: string; // tâches menées en même temps par passage
@@ -62,7 +64,12 @@ export async function loadPlannerData(env: Env, store: string): Promise<PlannerD
     steps: JSON.parse(r.steps),
     kcal: r.kcal,
     protein: r.protein,
+    // Glucides et lipides estimés ; pas encore estimés : répartition courante d'un repas (voir fitMacros)
+    carbs: r.carbs ?? Math.round((Math.max(0, r.kcal - 4 * r.protein) * 0.55) / 4),
+    fat: r.fat ?? Math.round((Math.max(0, r.kcal - 4 * r.protein) * 0.45) / 9),
+    meat: hasMeat(JSON.parse(r.ingredients)), // viande, volaille, poisson ou fruits de mer
     image: r.image_key,
+    ...(r.image_credit ? { imageCredit: JSON.parse(r.image_credit) } : {}),
   }));
 
   const ingredients = new Map<string, IngredientInfo>();

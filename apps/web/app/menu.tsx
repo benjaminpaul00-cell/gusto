@@ -3,7 +3,7 @@ import { Link } from "expo-router";
 import Head from "expo-router/head";
 import { ArrowLeft, ArrowRight, CalendarDays, FileDown, Info, ShoppingBasket, Utensils, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { DatePicker, longDate } from "../src/components/DatePicker";
 import { Screen } from "../src/components/Screen";
 import { Button, IconBadge } from "../src/components/ui";
@@ -20,6 +20,7 @@ import { saveFile } from "../src/export/save";
 import { loadPlan } from "../src/storage";
 import { font, money, r as rsp, radius, space, useTheme, type Theme } from "../src/theme";
 import { dealText } from "../src/deal";
+import { NutritionPanel } from "../src/components/NutritionPanel";
 
 type Plan = Extract<PlanResponse, { ok: true }>;
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -136,6 +137,7 @@ function Menu() {
 
           {tab === "menu" ? (
             <View style={{ gap: space(6) }}>
+              {plan.nutrition ? <NutritionPanel n={plan.nutrition} week={week} t={t} /> : null}
               {w.days.map((d) => (
                 <View key={d.day} style={{ gap: space(3) }}>
                   <Text style={s.day}>{DAYS[d.day - 1]}</Text>
@@ -206,7 +208,13 @@ function MealCard({ r, meal, onPress, s, t }: { r: RecipeView; meal: string; onP
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.cardMeal}>{meal} · {label(CUISINES, r.cuisine)}</Text>
         <Text style={s.cardTitle}>{r.name}</Text>
-        <Text style={s.cardMeta}>{money(r.costPerPortion)} par portion · {Math.round(r.kcal)} kcal · {Math.round(r.protein)} g de protéines</Text>
+        {r.portion ? (
+          <Text style={s.cardMeta}>
+            {money(r.costPerPortion)} par portion · portion ×{String(r.portion).replace(".", ",")} : {Math.round(r.kcal * r.portion)} kcal · P {Math.round(r.protein * r.portion)} g · G {Math.round((r.carbs ?? 0) * r.portion)} g · L {Math.round((r.fat ?? 0) * r.portion)} g
+          </Text>
+        ) : (
+          <Text style={s.cardMeta}>{money(r.costPerPortion)} par portion · {Math.round(r.kcal)} kcal · {Math.round(r.protein)} g de protéines</Text>
+        )}
         {r.specialty.length ? <Text style={[s.cardMeta, { color: t.sale }]}>Demande un arrêt en épicerie spécialisée</Text> : null}
       </View>
     </Pressable>
@@ -273,7 +281,11 @@ function RecipeSheet({ r, onClose, s, t }: { r: RecipeView | null; onClose: () =
             <ScrollView contentContainerStyle={{ padding: space(5), paddingBottom: space(12) }}>
               {r.image ? <Image source={{ uri: r.image }} style={{ width: "100%", aspectRatio: 4 / 3, borderRadius: radius.md }} contentFit="cover" /> : null}
               <Text style={[s.h2, { marginTop: space(4) }]}>{r.name}</Text>
-              <Text style={s.cardMeta}>{r.servings} portions · {Math.round(r.kcal)} kcal et {Math.round(r.protein)} g de protéines par portion</Text>
+              <Text style={s.cardMeta}>
+                {r.portion
+                  ? `${r.servings} portion${r.servings > 1 ? "s" : ""} ajustée${r.servings > 1 ? "s" : ""} (×${String(r.portion).replace(".", ",")}) · par portion : ${Math.round(r.kcal * r.portion)} kcal, ${Math.round(r.protein * r.portion)} g de protéines, ${Math.round((r.carbs ?? 0) * r.portion)} g de glucides, ${Math.round((r.fat ?? 0) * r.portion)} g de lipides`
+                  : `${r.servings} portions · ${Math.round(r.kcal)} kcal et ${Math.round(r.protein)} g de protéines par portion`}
+              </Text>
 
               <Text style={s.h3}>Ingrédients</Text>
               {r.ingredients.map((i) => <Text key={i.name} style={s.li}>• {i.display}</Text>)}
@@ -293,7 +305,13 @@ function RecipeSheet({ r, onClose, s, t }: { r: RecipeView | null; onClose: () =
 
               <Text style={s.h3}>Préparation</Text>
               {r.steps.map((st, i) => <Text key={i} style={s.li}>{i + 1}. {st}</Text>)}
-              {r.image ? <Text style={[s.note, { marginTop: space(6) }]}>Image illustrative générée par IA.</Text> : null}
+              {r.image && r.imageCredit ? (
+                <Text style={[s.note, { marginTop: space(6) }]}>
+                  Photo{r.imageCredit.creator ? ` : ${r.imageCredit.creator}` : ""} · {r.imageCredit.license === "cc0" ? "CC0" : "domaine public"} ·{" "}
+                  <Text onPress={() => Linking.openURL(r.imageCredit!.landing)} style={{ textDecorationLine: "underline" }} accessibilityRole="link">{r.imageCredit.source === "wikimedia" ? "Wikimedia Commons" : "source"}</Text>
+                  . Photo illustrative : la présentation peut différer.
+                </Text>
+              ) : r.image ? <Text style={[s.note, { marginTop: space(6) }]}>Image illustrative générée par IA.</Text> : null}
             </ScrollView>
           ) : null}
         </View>

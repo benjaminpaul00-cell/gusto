@@ -2,15 +2,16 @@
 import { router } from "expo-router";
 import {
   ArrowLeft, ArrowRight, Ban, BadgePercent, CandyOff, Check, CookingPot, Dumbbell, Flame, Leaf, MilkOff, Minus, Moon, Nut, Pencil, Plus,
-  Sparkles, Sun, Sunrise, User, Wheat,
+  Sparkles, Sun, Sunrise, Target, User, Wheat,
 } from "lucide-react-native";
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Platform, Pressable, Switch, Text, TextInput, useWindowDimensions, View, type ViewStyle } from "react-native";
 import {
-  BUDGET_SAFETY, CUISINES, DIETS, LIMITS, MEALS, STORES, STYLES,
-  type CuisineId, type DietId, type MealId, type PlanRequest, type StoreId, type StyleId,
+  ALCOHOLS, BUDGET_SAFETY, CUISINES, DIETS, EXTRAS, LIMITS, MEALS, STORES, STYLES,
+  type CuisineId, type DietId, type Habits, type MacroTarget, type MealId, type PlanRequest, type StoreId, type StyleId,
 } from "../../../../shared/options";
-import { requestPlan } from "../api";
+import { CaloriesStep, EMPTY_PROFILE, HabitsStep, MacrosStep, macrosValid, type CalcProfile } from "./MacroSteps";
+import { requestMinimum, requestPlan } from "../api";
 import { CUISINE_PAGES } from "../content/cuisines";
 import { saveForm, savePlan } from "../storage";
 import { StoreLogo } from "../stores";
@@ -38,9 +39,18 @@ const dishes = (id: string) => {
   return (ul?.ul ?? []).slice(0, 2).map((d) => d.split(/ ?[:(,]/)[0].trim()).join(", ");
 };
 
-const STEPS = ["store", "meals", "weeks", "people", "cuisines", "styles", "diets", "budget", "recap"] as const;
-type Step = (typeof STEPS)[number];
-const LABEL: Record<Step, string> = { store: "Épicerie", meals: "Repas", weeks: "Durée", people: "Personnes", cuisines: "Cuisines", styles: "Genre", diets: "Restrictions", budget: "Budget", recap: "Récapitulatif" };
+// « Genre » (gourmand, santé, macros…) vient juste après les épiceries : avec la diète par macros,
+// le menu est pour 1 personne avec déjeuner, dîner et souper, donc pas de questions Repas ni Personnes.
+const BASE_STEPS = ["store", "styles", "meals", "weeks", "people", "cuisines", "diets", "budget", "recap"] as const;
+const MACRO_STEPS = ["habits", "calories", "macros"] as const; // diète par macros, juste après « Genre »
+type Step = (typeof BASE_STEPS)[number] | (typeof MACRO_STEPS)[number];
+const stepsFor = (macroOn: boolean): Step[] =>
+  macroOn ? ["store", "styles", ...MACRO_STEPS, "weeks", "cuisines", "diets", "budget", "recap"] : [...BASE_STEPS];
+const LABEL: Record<Step, string> = {
+  store: "Épicerie", meals: "Repas", weeks: "Durée", people: "Personnes", cuisines: "Cuisines", styles: "Genre",
+  habits: "Habitudes", calories: "Calories", macros: "Macros", diets: "Restrictions", budget: "Budget", recap: "Récapitulatif",
+};
+const EMPTY_MACROS: MacroTarget = { kcal: 0, protein: 30, carbs: 40, fat: 30 };
 
 export function Wizard() {
   const t = useTheme();
@@ -51,14 +61,28 @@ export function Wizard() {
   const [budgetText, setBudgetText] = useState("");
   const [dietsChosen, setDietsChosen] = useState(false); // « Aucune » ou une restriction a été choisie
   const [busy, setBusy] = useState(false);
+  // Diète par macros
+  const [macroOn, setMacroOn] = useState(false);
+  const [habits, setHabits] = useState<Habits>({ alcohol: [], extras: [] });
+  const [macros, setMacros] = useState<MacroTarget>(EMPTY_MACROS);
+  const [profile, setProfile] = useState<CalcProfile>(EMPTY_PROFILE);
+  const STEPS = stepsFor(macroOn);
+  const ALL_MEALS = MEALS.map((m) => m.id as MealId);
+  const toggleMacro = (on: boolean) => {
+    setMacroOn(on);
+    setError(null);
+    if (on) setForm((f) => ({ ...f, people: 1, meals: ALL_MEALS })); // diète par macros : 1 personne, déjeuner, dîner et souper
+  };
   const [error, setError] = useState<{ message: string; minBudget?: number } | null>(null);
+  const [mins, setMins] = useState<{ min: number; full: number } | null>(null);
   const top = useRef<any>(null);
   const step = STEPS[i];
 
   const set = <K extends keyof PlanRequest>(k: K, v: PlanRequest[K]) => { setForm((f) => ({ ...f, [k]: v })); setError(null); };
   const valid: Record<Step, boolean> = {
     store: (form.stores ?? []).length > 0, meals: form.meals.length > 0, weeks: form.weeks > 0, people: form.people > 0, cuisines: form.cuisines.length > 0,
-    styles: form.styles.length > 0, diets: dietsChosen, budget: form.budget > 0, recap: true,
+    styles: form.styles.length > 0 || macroOn, habits: true, calories: macros.kcal >= 1000 && macros.kcal <= 6000, macros: macrosValid(macros),
+    diets: dietsChosen, budget: form.budget > 0 && !!mins && form.budget >= mins.min, recap: true,
   };
   const go = (n: number) => setI(Math.max(0, Math.min(STEPS.length - 1, n)));
   // Nouvelle question : ramener le haut de la carte sous l'en-tête (après l'affichage, une fois la hauteur de la page ajustée).
@@ -90,8 +114,9 @@ export function Wizard() {
   });
 
   async function submit(budgetOverride?: number) {
-    const req = budgetOverride ? { ...form, budget: budgetOverride } : form;
-    if (budgetOverride) { setForm(req); setBudgetText(String(budgetOverride)); }
+    const base = budgetOverride ? { ...form, budget: budgetOverride } : form;
+    const req: PlanRequest = macroOn ? { ...base, people: 1, meals: ALL_MEALS, macros, habits } : base;
+    if (budgetOverride) { setForm(base); setBudgetText(String(budgetOverride)); }
     setBusy(true);
     setError(null);
     saveForm(req);
@@ -105,6 +130,16 @@ export function Wizard() {
     setBusy(false);
     setError({ message: res.message, minBudget: res.minBudget });
   }
+
+  const minRequest: PlanRequest = macroOn ? { ...form, people: 1, meals: ALL_MEALS, macros, habits } : form;
+  const minKey = JSON.stringify({ ...minRequest, budget: 0 });
+  useEffect(() => {
+    if (step !== "budget" && step !== "recap") return;
+    const ctl = new AbortController();
+    setMins(null);
+    const id = setTimeout(() => { requestMinimum(minRequest, ctl.signal).then((m) => { if (!ctl.signal.aborted) setMins(m); }); }, 250);
+    return () => { clearTimeout(id); ctl.abort(); };
+  }, [minKey, step === "budget" || step === "recap"]);
 
   const stores = form.stores ?? [];
   const storeLabel = stores.map((id) => STORES.find((s) => s.id === id)?.label).filter(Boolean).join(", ");
@@ -153,12 +188,12 @@ export function Wizard() {
             )}
 
             {step === "meals" && (
-              <Q title="Quels repas veux-tu planifier ?" hint="Choisis-en un ou plusieurs." t={t}>
+              <Q title="Quels repas veux-tu planifier ?" hint={macroOn ? "Diète par macros : déjeuner, dîner et souper sont inclus pour couvrir toute ta journée." : "Choisis-en un ou plusieurs."} t={t}>
                 <Grid>
                   {MEALS.map((m, k) => {
                     const info = MEAL_INFO[m.id];
                     return (
-                      <Tile key={m.id} selected={form.meals.includes(m.id)} onPress={() => set("meals", toggle(form.meals, m.id as MealId))} t={t} delay={k} height={150}>
+                      <Tile key={m.id} selected={form.meals.includes(m.id)} onPress={() => !macroOn && set("meals", toggle(form.meals, m.id as MealId))} t={t} delay={k} height={150}>
                         <TileBody icon={info.icon} title={m.label} hint={info.hint} tone={k} on={form.meals.includes(m.id)} t={t} />
                       </Tile>
                     );
@@ -181,12 +216,12 @@ export function Wizard() {
             )}
 
             {step === "people" && (
-              <Q title="Vous êtes combien à table ?" hint="Les quantités et le nombre d’emballages suivent." t={t}>
+              <Q title="Vous êtes combien à table ?" hint={macroOn ? "Diète par macros : le menu est calculé pour une seule personne, selon ta cible." : "Les quantités et le nombre d’emballages suivent."} t={t}>
                 <View style={{ alignItems: "center", gap: space(8), paddingVertical: space(4) }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: space(8) }}>
-                    <Round icon={Minus} a11y="Une personne de moins" disabled={form.people <= 1} onPress={() => set("people", form.people - 1)} t={t} />
+                    <Round icon={Minus} a11y="Une personne de moins" disabled={macroOn || form.people <= 1} onPress={() => set("people", form.people - 1)} t={t} />
                     <Text key={form.people} {...r("pop-in")} accessibilityLiveRegion="polite" style={{ fontFamily: font.display, fontSize: 120, lineHeight: 124, color: form.people ? t.primary : t.line, minWidth: 150, textAlign: "center", fontVariant: ["tabular-nums"] }}>{form.people || "?"}</Text>
-                    <Round icon={Plus} a11y="Une personne de plus" disabled={form.people >= LIMITS.maxPeople} onPress={() => set("people", form.people + 1)} t={t} />
+                    <Round icon={Plus} a11y="Une personne de plus" disabled={macroOn || form.people >= LIMITS.maxPeople} onPress={() => set("people", form.people + 1)} t={t} />
                   </View>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: space(2), maxWidth: 520 }} aria-hidden>
                     {Array.from({ length: form.people }).map((_, k) => (
@@ -197,7 +232,7 @@ export function Wizard() {
                   </View>
                   <View style={{ flexDirection: "row", gap: space(2) }}>
                     {[1, 2, 4, 6].map((n) => (
-                      <Pressable key={n} onPress={() => set("people", n)} style={{ paddingHorizontal: space(4), height: 36, justifyContent: "center", borderRadius: 999, borderWidth: 2, borderColor: t.edge, backgroundColor: form.people === n ? t.tag : t.surface }}>
+                      <Pressable key={n} onPress={() => !macroOn && set("people", n)} style={{ paddingHorizontal: space(4), height: 36, justifyContent: "center", borderRadius: 999, borderWidth: 2, borderColor: t.edge, backgroundColor: form.people === n ? t.tag : t.surface }}>
                         <Text style={{ fontFamily: font.bold, fontSize: 14, color: t.ink }}>{n === 1 ? "Solo" : n === 2 ? "Couple" : `${n} pers.`}</Text>
                       </Pressable>
                     ))}
@@ -237,6 +272,38 @@ export function Wizard() {
                     );
                   })}
                 </Grid>
+                <Pressable onPress={() => toggleMacro(!macroOn)} accessibilityRole="switch" accessibilityState={{ checked: macroOn }} {...r("press")}
+                  style={{ marginTop: space(5), flexDirection: "row", alignItems: "center", gap: space(4), padding: space(5), borderRadius: radius.lg, borderWidth: 2, borderColor: t.edge,
+                    backgroundColor: macroOn ? "#0E1030" : t.surface, boxShadow: macroOn ? "5px 5px 0 #FF5FA2" : `3px 3px 0 ${t.edge}` } as ViewStyle}>
+                  <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: "#FF5FA2", borderWidth: 2, borderColor: t.edge, alignItems: "center", justifyContent: "center" }}>
+                    <Target size={24} color="#0E1030" strokeWidth={2.25} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontFamily: font.display, fontSize: 19, color: macroOn ? "#FFFFFF" : t.ink }}>Diète par macros</Text>
+                    <Text style={{ fontFamily: font.medium, fontSize: 13.5, lineHeight: 19, color: macroOn ? "#C9D0FF" : t.muted }}>
+                      Pour 1 personne, avec déjeuner, dîner et souper. Tes calories par jour et ta répartition protéines, glucides et lipides : les portions s’ajustent à ta cible.
+                    </Text>
+                  </View>
+                  <Switch value={macroOn} onValueChange={(v) => toggleMacro(v)} trackColor={{ true: "#FF5FA2", false: t.line }} thumbColor="#FFFFFF" {...({ activeThumbColor: "#FFFFFF" } as any)} accessibilityLabel="Diète par macros" />
+                </Pressable>
+              </Q>
+            )}
+
+            {step === "habits" && (
+              <Q title="As-tu des habitudes qui comptent ?" hint="Facultatif. Elles sont comptées dans tes calories de la journée et ajoutées à ta liste quand elles se vendent en épicerie." t={t}>
+                <HabitsStep habits={habits} setHabits={setHabits} t={t} />
+              </Q>
+            )}
+
+            {step === "calories" && (
+              <Q title="Combien de calories par jour ?" hint="Pour une personne. Si tu ne le sais pas, on le calcule ensemble." t={t}>
+                <CaloriesStep profile={profile} setProfile={setProfile} kcal={macros.kcal} setKcal={(k) => setMacros((m) => ({ ...m, kcal: Math.round(k) }))} t={t} />
+              </Q>
+            )}
+
+            {step === "macros" && (
+              <Q title="Comment répartir tes calories ?" hint="En pourcentage de tes calories : protéines, glucides et lipides." t={t}>
+                <MacrosStep macros={macros} setMacros={setMacros} t={t} />
               </Q>
             )}
 
@@ -256,7 +323,8 @@ export function Wizard() {
             )}
 
             {step === "budget" && (
-              <BudgetStep form={form} set={set} budgetText={budgetText} setBudgetText={setBudgetText} mealsCount={mealsCount} t={t} />
+              <BudgetStep form={form} set={set} mins={mins} macroOn={macroOn} budgetText={budgetText} setBudgetText={setBudgetText} mealsCount={mealsCount} t={t}
+                extrasCost={macroOn ? extrasEstimate(habits, form.weeks) : 0} portionScale={macroOn && macros.kcal ? Math.min(1.6, Math.max(0.8, macros.kcal / 2000)) : 1} />
             )}
 
             {step === "recap" && (
@@ -268,10 +336,15 @@ export function Wizard() {
                     ["weeks", "Durée", `${form.weeks} semaine${form.weeks > 1 ? "s" : ""} · ${mealsCount} repas`],
                     ["people", "Personnes", String(form.people)],
                     ["cuisines", "Cuisines", form.cuisines.map((c) => CUISINES.find((x) => x.id === c)?.label).join(", ")],
-                    ["styles", "Genre", form.styles.map((s) => STYLES.find((x) => x.id === s)?.label).join(", ")],
+                    ["styles", "Genre", [...form.styles.map((s) => STYLES.find((x) => x.id === s)?.label), ...(macroOn ? ["Diète par macros (1 personne, déjeuner, dîner et souper)"] : [])].join(", ")],
+                    ...(macroOn ? ([
+                      ["habits", "Habitudes", habitsText(habits)],
+                      ["calories", "Calories", `${macros.kcal.toLocaleString("fr-CA")} par jour`],
+                      ["macros", "Macros", `Protéines ${macros.protein} % · Glucides ${macros.carbs} % · Lipides ${macros.fat} %`],
+                    ] as [Step, string, string][]) : []),
                     ["diets", "Restrictions", form.diets.length ? form.diets.map((d) => DIETS.find((x) => x.id === d)?.label).join(", ") : "Aucune"],
                     ["budget", "Budget", `${money(form.budget)}${form.onlyStore ? " · sans épicerie spécialisée" : ""}`],
-                  ] as [Step, string, string][]).map(([s, k, v], n) => (
+                  ] as [Step, string, string][]).filter(([s]) => STEPS.includes(s)).sort((a, b) => STEPS.indexOf(a[0]) - STEPS.indexOf(b[0])).map(([s, k, v], n) => (
                     <Pressable key={s} onPress={() => go(STEPS.indexOf(s))} {...r("dim")}
                       style={{ flexDirection: "row", alignItems: "center", gap: space(4), paddingVertical: space(3.5), paddingHorizontal: space(5), borderTopWidth: n ? 1.5 : 0, borderTopColor: t.line, backgroundColor: n % 2 ? t.surfaceAlt : t.surface }}>
                       <Text style={{ width: 120, fontFamily: font.semibold, fontSize: 14, color: t.muted }}>{k}</Text>
@@ -283,7 +356,7 @@ export function Wizard() {
                 {error ? (
                   <View accessibilityRole="alert" style={{ marginTop: space(6), padding: space(5), borderRadius: radius.md, borderWidth: 2, borderColor: t.edge, backgroundColor: t.pinkSoft, gap: space(3) }}>
                     <Text style={{ fontFamily: font.semibold, fontSize: 15, lineHeight: 22, color: t.ink }}>{error.message}</Text>
-                    {error.minBudget ? <Button label={`Essayer avec ${money(error.minBudget)}`} size="sm" variant="accent" onPress={() => submit(error.minBudget)} /> : null}
+                    {error.minBudget ? <Button label="Modifier mon budget" size="sm" variant="accent" onPress={() => { setError(null); go(STEPS.indexOf("budget")); }} /> : null}
                   </View>
                 ) : null}
               </Q>
@@ -308,6 +381,12 @@ export function Wizard() {
       )}
     </View>
   );
+}
+
+function habitsText(h: Habits): string {
+  const a = h.alcohol.map((x) => `${ALCOHOLS.find((d) => d.id === x.id)?.label} ${x.perWeek}/sem.`);
+  const e = (h.extras ?? []).map((x) => { const d = EXTRAS.find((y) => y.id === x.id); return `${d?.label} ${x.perDay} ${d?.unit}/jour`; });
+  return [...a, ...e].join(" · ") || "Aucune";
 }
 
 // ─── Morceaux ───────────────────────────────────────────────────────────────
@@ -377,14 +456,34 @@ function Round({ icon: IconC, a11y, disabled, onPress, t }: { icon: Icon; a11y: 
   );
 }
 
-function BudgetStep({ form, set, budgetText, setBudgetText, mealsCount, t }: {
-  form: PlanRequest; set: <K extends keyof PlanRequest>(k: K, v: PlanRequest[K]) => void; budgetText: string; setBudgetText: (s: string) => void; mealsCount: number; t: Theme;
+/** Diète par macros : coût approximatif des noix pour la période, pour suggérer un budget réaliste. */
+function extrasEstimate(h: Habits, weeks: number): number {
+  let total = 0;
+  for (const e of h.extras ?? []) {
+    const def = EXTRAS.find((x) => x.id === e.id);
+    if (!def?.ingredient) continue; // shake : prix non suivi, hors budget
+    // Noix en sachet ≈ 4,50 $ / 100 g ; on achète des sachets entiers (au moins ≈ 7 $), plus 30 % de marge.
+    total += Math.max(7, ((e.perDay * 7 * Math.max(1, weeks)) / 100) * 4.5 * 1.3);
+  }
+  return Math.round(total);
+}
+
+function BudgetStep({ form, mins, macroOn, set, budgetText, setBudgetText, mealsCount, t, extrasCost = 0, portionScale = 1 }: {
+  form: PlanRequest; mins: { min: number; full: number } | null; macroOn: boolean; set: <K extends keyof PlanRequest>(k: K, v: PlanRequest[K]) => void; budgetText: string; setBudgetText: (s: string) => void; mealsCount: number; t: Theme;
+  extrasCost?: number; portionScale?: number;
 }) {
-  // Suggestions selon la taille du menu (environ 3, 4 et 5,50 $ par portion)
+  // Suggestions selon la taille du menu (environ 3, 4 et 5,50 $ par portion), portions de la diète par macros et extras compris
   const portions = mealsCount * form.people;
   const round5 = (n: number) => Math.max(20, Math.round(n / 5) * 5);
-  const presets = [["Serré", round5(portions * 3)], ["Confortable", round5(portions * 4)], ["Généreux", round5(portions * 5.5)]] as const;
-  const perPortion = form.budget > 0 && portions > 0 ? (form.budget * BUDGET_SAFETY) / portions : 0;
+  // Suggestions à partir du minimum vérifié par le serveur : jamais sous le minimum
+  const minimum = mins?.min ?? null;
+  const ceil5 = (n: number) => Math.ceil(n / 5) * 5;
+  const presets = (mins
+    ? [["Serré", ceil5(mins.min)], ["Confortable", ceil5(Math.max(mins.min * 1.2, mins.full))], ["Généreux", ceil5(Math.max(mins.min * 1.45, mins.full * 1.15))]]
+    : []) as [string, number][];
+  void round5; void portionScale;
+  const tooLow = !!minimum && form.budget > 0 && form.budget < minimum;
+  const perPortion = form.budget > 0 && portions > 0 ? Math.max(0, form.budget * BUDGET_SAFETY - extrasCost) / portions : 0; // extras retirés
   const setBudget = (v: number) => { setBudgetText(String(v)); set("budget", v); };
   return (
     <Q title="Quel est ton budget ?" hint={`Le total pour ${form.weeks} semaine${form.weeks > 1 ? "s" : ""}, garde-manger compris. Gusto ne le dépassera jamais.`} t={t}>
@@ -416,6 +515,13 @@ function BudgetStep({ form, set, budgetText, setBudgetText, mealsCount, t }: {
               </Pressable>
             ))}
           </View>
+          <Text style={{ fontFamily: font.semibold, fontSize: 14, lineHeight: 20, color: tooLow ? t.danger : t.muted }}>
+            {minimum
+              ? tooLow
+                ? `Ce budget est trop bas pour tes choix : le minimum est ${minimum} $. Monte ton budget ou change tes choix (moins de semaines, d’autres cuisines).`
+                : `Minimum pour tes choix : ${minimum} $${macroOn && mins && mins.full > minimum ? ` · tes macros sont atteintes à 100 % à partir de ${mins.full} $` : ""}`
+              : "Calcul du minimum pour tes choix…"}
+          </Text>
           <Pressable onPress={() => set("onlyStore", !form.onlyStore)} style={{ flexDirection: "row", alignItems: "center", gap: space(3) }} accessibilityRole="switch" accessibilityState={{ checked: form.onlyStore }}>
             <Switch value={form.onlyStore} onValueChange={(v) => set("onlyStore", v)} trackColor={{ true: t.primary, false: t.line }} thumbColor="#FFFFFF" {...({ activeThumbColor: "#FFFFFF" } as any)} accessibilityLabel="Seulement des recettes réalisables à mon épicerie" />
             <Text style={{ flex: 1, fontFamily: font.medium, fontSize: 14.5, lineHeight: 21, color: t.ink }}>Seulement des recettes réalisables à mon épicerie (pas d’arrêt en épicerie spécialisée)</Text>
@@ -429,6 +535,11 @@ function BudgetStep({ form, set, budgetText, setBudgetText, mealsCount, t }: {
           <Text style={{ fontFamily: font.medium, fontSize: 13.5, lineHeight: 19, color: "#C9D0FF" }}>
             Gusto vise {form.budget > 0 ? money(form.budget * BUDGET_SAFETY) : "95 % du budget"}, pour garder une marge entre les succursales.
           </Text>
+          {extrasCost > 0 ? (
+            <Text style={{ fontFamily: font.semibold, fontSize: 13.5, lineHeight: 19, color: "#FFE14D" }}>
+              Tes noix prennent environ {money(extrasCost)} de ce budget.
+            </Text>
+          ) : null}
         </View>
       </View>
     </Q>

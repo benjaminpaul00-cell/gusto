@@ -26,7 +26,7 @@ ingredients.set("épis", {
 ingredients.set("djon djon", { name: "djon djon", section: "Épicerie", pantry: false, unitWeightG: null, homemade: null, specialty: { where: "épicerie haïtienne", priceMax: 9, sizeQty: 30, sizeUnit: "g" } });
 
 const R = (id: string, cuisine: string, ings: PlannerRecipe["ingredients"]): PlannerRecipe => ({
-  id, name: id, cuisine, meal: "souper", styles: ["normal"], diets: [], servings: 4, ingredients: ings, steps: ["Cuire."], kcal: 600, protein: 25, image: null,
+  id, name: id, cuisine, meal: "souper", styles: ["normal"], diets: [], servings: 4, ingredients: ings, steps: ["Cuire."], kcal: 600, protein: 25, carbs: 60, fat: 20, meat: true, image: null,
 });
 const recipes = [
   R("poulet-riz", "quebecoise", [{ name: "poulet", qty: 600, unit: "g" }, { name: "riz", qty: 300, unit: "g" }, { name: "oignon", qty: 1, unit: "unite" }, { name: "huile", qty: 30, unit: "ml" }]),
@@ -49,26 +49,52 @@ if (res.ok) {
   console.log("✔ plan valide :", res.total, "$ pour une cible de", res.target, "$");
 }
 
-// 2. Budget serré : toujours un menu, jamais au-dessus de la cible
+// 2. Budget serré : soit un menu complet sous la cible, soit un refus avec un budget minimum qui fonctionne
+const filled = (r: Extract<typeof res, { ok: true }>) => r.weeks.reduce((a, w) => a + w.days.reduce((b, d) => b + d.meals.length, 0), 0);
 for (const budget of [150, 120, 100, 90, 80, 70, 60, 40, 20]) {
   res = planMenu({ ...base, budget }, data, () => null);
-  assert.equal(res.ok, true, `budget ${budget} : un menu doit toujours être créé`);
-  if (res.ok) {
+  if (!res.ok) {
+    assert.equal(res.reason, "budget", `budget ${budget} : refus pour une autre raison`);
+    assert.ok(res.minBudget && res.minBudget > budget, `budget ${budget} : budget minimum absent ou trop bas`);
+    const retry = planMenu({ ...base, budget: res.minBudget }, data, () => null);
+    assert.ok(retry.ok && filled(retry) === 14, `budget ${budget} : le budget minimum ${res.minBudget} $ ne donne pas un menu complet`);
+    console.log(`✔ budget ${budget} $ → refusé, budget minimum ${res.minBudget} $ (menu complet)`);
+    continue;
+  }
+  assert.equal(filled(res), 14, `budget ${budget} : des repas sont laissés vides`);
+  {
     assert.ok(res.total <= res.target, `budget ${budget}: ${res.total} > ${res.target}`);
     const n = res.weeks.reduce((a, w) => a + w.days.reduce((b, d) => b + d.meals.length, 0), 0);
     for (const w of res.weeks) {
       const counts = new Map<string, number>();
       for (const d of w.days) for (const m of d.meals) counts.set(m.recipeId, (counts.get(m.recipeId) ?? 0) + 1);
-      assert.ok(Math.max(0, ...counts.values()) <= 4, `budget ${budget} : un plat revient plus de 4 fois dans la semaine`);
+      assert.ok(Math.max(0, ...counts.values()) <= 7, `budget ${budget} : un plat revient plus de 7 fois dans la semaine`); // budget d'abord : jusqu'à chaque jour
     }
     console.log(`✔ budget ${budget} $ → ${res.total} $, ${n} repas${res.notices ? " (avis : " + res.notices.length + ")" : ""}`);
   }
 }
 
-// 3. Budget minuscule : menu quand même, avec repas laissés libres et un avis
+// 3. Budget minuscule : jamais de repas libre, on propose le budget minimum
 res = planMenu({ ...base, budget: 10, people: 20 }, data, () => null);
-assert.equal(res.ok, true);
-if (res.ok) { assert.ok(res.total <= res.target); assert.ok(res.notices?.length); console.log("✔ budget minuscule → menu partiel dans le budget :", res.notices![res.notices!.length - 1]); }
+assert.equal(res.ok, false);
+if (!res.ok) { assert.ok(res.minBudget && res.minBudget > 10); console.log("✔ budget minuscule → refusé :", res.message); }
+
+// 3 bis. Chaque repas contient viande, volaille, poisson ou fruits de mer ; les œufs ne comptent pas
+{
+  const M = (id: string, ings: PlannerRecipe["ingredients"], diets: PlannerRecipe["diets"] = []): PlannerRecipe => ({ ...R(id, "quebecoise", ings), meat: undefined, diets });
+  const meatData: PlannerData = { ...data, recipes: [
+    M("omelette", [{ name: "œuf", qty: 8, unit: "unite" }, { name: "oignon", qty: 1, unit: "unite" }], ["vegetarien"]),
+    M("lentilles-veg", [{ name: "lentilles", qty: 400, unit: "g" }, { name: "oignon", qty: 1, unit: "unite" }], ["vegetarien"]),
+    M("poulet-riz-2", [{ name: "poulet", qty: 600, unit: "g" }, { name: "riz", qty: 300, unit: "g" }]),
+    M("poulet-oignon", [{ name: "poulet", qty: 500, unit: "g" }, { name: "oignon", qty: 2, unit: "unite" }]),
+  ] };
+  const r1 = planMenu({ ...base, weeks: 1, budget: 400, cuisines: ["quebecoise"] }, meatData, () => null);
+  assert.ok(r1.ok, "menu avec viande");
+  if (r1.ok) assert.ok(Object.keys(r1.recipes).every((id) => id.startsWith("poulet")), "un plat sans viande s'est glissé dans le menu");
+  const r2 = planMenu({ ...base, weeks: 1, budget: 400, cuisines: ["quebecoise"], diets: ["vegetarien"] }, meatData, () => null);
+  assert.ok(r2.ok && Object.keys(r2.recipes).every((id) => !id.startsWith("poulet")), "menu végétarien : pas de viande");
+  console.log("✔ viande à chaque repas (œufs exclus), sauf menu végétarien");
+}
 
 // 4. « Seulement mon épicerie » exclut le djon djon
 res = planMenu({ ...base, onlyStore: true }, data, () => null);

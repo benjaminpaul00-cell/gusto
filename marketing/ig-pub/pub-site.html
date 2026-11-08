@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Pub Instagram Gusto (site)</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=block" rel="stylesheet">
+<style>
+  :root { --ink:#0E1030; --cobalt:#2B44FF; --pink:#FF5FA2; --lemon:#FFE14D; --cream:#FFF4E2; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:1080px; height:1350px; overflow:hidden; background:var(--cream); }
+  body { font-family:"Plus Jakarta Sans", sans-serif; color:var(--ink); position:relative; }
+
+  .dots { position:absolute; inset:0; background-image:radial-gradient(rgba(14,16,48,.10) 1.6px, transparent 1.7px); background-size:26px 26px; }
+  .sun { position:absolute; width:980px; height:980px; border-radius:50%; background:var(--cobalt); left:120px; top:560px; }
+  .ring { position:absolute; width:1140px; height:1140px; border-radius:50%; border:3px dashed rgba(14,16,48,.18); left:40px; top:480px; }
+
+  .brand { position:absolute; left:64px; top:52px; width:250px; height:161px; }
+  .brand .flag { position:absolute; left:163px; top:-35px; width:125px; transform:rotate(8deg); }
+  .brand .logo { position:absolute; inset:0; width:250px; z-index:1; }
+  .sticker { position:absolute; right:70px; top:56px; width:176px; height:176px; border-radius:50%; background:var(--lemon); border:5px solid var(--ink); box-shadow:8px 8px 0 var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; transform:rotate(12deg); text-align:center; }
+  .sticker b { font-weight:800; font-size:46px; line-height:.95; letter-spacing:-1.5px; }
+  .sticker span { font-weight:700; font-size:19px; margin-top:6px; }
+
+  h1 { position:absolute; left:64px; top:262px; width:900px; font-weight:800; font-size:80px; line-height:1; letter-spacing:-3px; }
+  h1 em { font-family:"Instrument Serif", serif; font-weight:400; font-size:112px; letter-spacing:-2px; color:var(--cobalt); line-height:.9; }
+  h1 .hl { background:linear-gradient(transparent 60%, var(--pink) 60%, var(--pink) 90%, transparent 90%); padding:0 4px; }
+
+  /* Téléphones */
+  .phone { position:absolute; width:412px; height:874px; border-radius:62px; background:var(--ink); padding:14px; box-shadow:22px 22px 0 rgba(14,16,48,.9); }
+  .phone::before { content:""; position:absolute; left:50%; top:26px; width:116px; height:32px; margin-left:-58px; border-radius:20px; background:var(--ink); z-index:2; }
+  .phone .screen { width:100%; height:100%; border-radius:48px; overflow:hidden; background:#fff; }
+  .phone .screen img { width:100%; display:block; }
+  .phone .screen .status { height:54px; background:#fff; }
+  .back { left:96px; top:560px; transform:rotate(-9deg) scale(.9); transform-origin:center top; }
+  .front { left:520px; top:500px; transform:rotate(6deg); z-index:3; }
+
+  /* Bulles */
+  .bubble { position:absolute; z-index:6; background:#fff; border:5px solid var(--ink); border-radius:22px; box-shadow:8px 8px 0 var(--ink); padding:16px 22px; font-weight:800; font-size:26px; line-height:1.15; }
+  .bubble small { display:block; font-weight:600; font-size:19px; color:#4A4F78; margin-top:2px; }
+  .b1 { left:44px; top:520px; transform:rotate(-4deg); background:var(--lemon); }
+  .b2 { left:48px; top:1078px; transform:rotate(-3deg); display:flex; align-items:center; gap:12px; }
+  .b2 svg { width:38px; height:38px; flex:none; }
+  .b3 { right:24px; top:440px; transform:rotate(5deg); background:var(--pink); }
+
+  .band { position:absolute; z-index:10; left:0; right:0; bottom:0; height:150px; background:var(--ink); display:flex; align-items:center; justify-content:space-between; padding:0 64px; }
+  .band p { color:#fff; font-weight:600; font-size:24px; line-height:1.3; }
+  .band p b { display:block; font-weight:800; font-size:34px; letter-spacing:-.5px; }
+  .cta { display:flex; align-items:center; gap:14px; background:var(--pink); color:var(--ink); border:5px solid #fff; border-radius:999px; padding:20px 34px; font-weight:800; font-size:31px; box-shadow:7px 7px 0 var(--lemon); white-space:nowrap; }
+  .cta svg { width:32px; height:32px; }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+  <div class="ring"></div>
+  <div class="sun"></div>
+
+  <div class="brand">
+    <img class="flag" src="img/drapeau-mat.png" alt="">
+    <img class="logo" src="img/logo.png" alt="mon gusto">
+  </div>
+  <div class="sticker"><b>100 %</b><b>gratuit</b><span>sans compte</span></div>
+
+  <h1>Tu fixes <span class="hl">le budget.</span><br><em>Gusto fait le menu.</em></h1>
+
+  <div class="phone back"><div class="screen"><div class="status"></div><img src="site-accueil.png" alt=""></div></div>
+  <div class="phone front"><div class="screen"><div class="status"></div><div style="height:792px;overflow:hidden"><img src="site-menu.png" alt="" style="margin-top:-158px"></div></div></div>
+
+  <div class="bubble b1">Les recettes<small>+ ta liste d’épicerie</small></div>
+  <div class="bubble b3">En 2 minutes</div>
+  <div class="bubble b2"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#1DB954" stroke="#0E1030" stroke-width="2"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Jamais plus que<br>ton budget</span></div>
+
+  <div class="band">
+    <p><b>Les vrais prix de ton épicerie.</b>Maxi, IGA, Metro, Super C et plus</p>
+    <div class="cta">mongusto.ca<svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#0E1030" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  </div>
+</body>
+</html>

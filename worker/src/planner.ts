@@ -2,12 +2,18 @@
 // Garantit que le total ne dépasse jamais la cible (budget × BUDGET_SAFETY).
 
 import { ingredientKey, isFree, normalize } from "./epiceries";
+import { macroDistance, macroPlan, portionFor } from "./macros";
+import { COMPLEMENTS, dayTotals, solveDay, type Complement } from "./macroSolve";
+import { hasMeat } from "./meat";
+import { MEAL_SHARE as MEAL_SHARE_OF } from "../../shared/options";
 import {
   BUDGET_SAFETY,
+  STYLES,
   type DietId,
   type HomemadeRecipe,
   type ListItem,
   type MealId,
+  type Nutrition,
   type PlanRequest,
   type PlanResponse,
   type RecipeIngredient,
@@ -29,7 +35,11 @@ export interface PlannerRecipe {
   steps: string[];
   kcal: number;
   protein: number;
+  carbs: number; // glucides par portion (g)
+  fat: number; // lipides par portion (g)
+  meat?: boolean; // contient viande, volaille, poisson ou fruits de mer (calculé au chargement)
   image: string | null;
+  imageCredit?: RecipeView["imageCredit"]; // photo libre de droits ; absent = image générée
 }
 
 export interface IngredientInfo {
@@ -74,6 +84,7 @@ interface Resolved {
   needs: Need[];
   homemade: string[];
   specialty: string[];
+  portion?: number; // diète par macros : portion ajustée par personne (1 = portion de la recette)
 }
 
 export function convert(qty: number, from: Unit, to: Unit, unitWeightG: number | null): number | null {
@@ -300,12 +311,35 @@ function cuisineList(ids: readonly string[], form: "noun" | "adj" = "noun") {
   return joinFr(ids.map((c) => (form === "adj" ? CUISINE_ADJ[c] : CUISINE_NOUN[c]) ?? c));
 }
 
-export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: PlannerRecipe) => string | null): PlanResponse {
+/**
+ * Comme planMenu, mais un budget minimum proposé est vérifié : on refait le calcul avec ce montant et on l'augmente
+ * jusqu'à ce qu'il donne vraiment un menu complet. « Essayer avec X $ » fonctionne donc à coup sûr.
+ */
+export function planMenuChecked(req: PlanRequest, data: PlannerData, imageUrl: (r: PlannerRecipe) => string | null): PlanResponse {
+  const res = planMenu(req, data, imageUrl);
+  if (res.ok || res.reason !== "budget" || !res.minBudget) return res;
+  let m = res.minBudget;
+  for (let i = 0; i < 8; i++) {
+    const again = planMenu({ ...req, budget: m }, data, imageUrl);
+    if (again.ok) return { ...res, minBudget: m, message: res.message.replace(`${res.minBudget} $`, `${m} $`) };
+    if (again.reason !== "budget" || !again.minBudget) break;
+    m = Math.max(m + 2, again.minBudget);
+  }
+  return { ...res, minBudget: m, message: res.message.replace(`${res.minBudget} $`, `${m} $`) };
+}
+
+export function planMenu(reqIn: PlanRequest, data: PlannerData, imageUrl: (r: PlannerRecipe) => string | null): PlanResponse {
+  // Diète par macros : toujours pour 1 personne, avec déjeuner, dîner et souper (toute la journée est planifiée)
+  const req: PlanRequest = reqIn?.macros ? { ...reqIn, people: 1, meals: ["dejeuner", "diner", "souper"] } : reqIn;
   const invalid = validateRequest(req);
   if (invalid) return { ok: false, reason: "invalid", message: invalid };
 
   const target = round2(req.budget * BUDGET_SAFETY);
-  const styles = req.styles?.length ? req.styles : (["normal"] as StyleId[]);
+  // Diète par macros : cible du jour, alcool compris (null = menu habituel)
+  const mp = macroPlan(req.macros, req.habits);
+  const styles = req.styles?.length ? req.styles : mp ? STYLES.map((x) => x.id as StyleId) : (["normal"] as StyleId[]);
+  // Écart à la cible de macros, compté comme un coût : 4 ¢ par point de % et par personne (0 sans diète par macros)
+  const fitCost = (r: Resolved) => (mp ? macroDistance(mp, r.recipe) * 0.04 * req.people : 0);
 
   // 1. Recettes admissibles et réalisables à cette épicerie
   const notices: string[] = [];
@@ -317,8 +351,11 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       if (cuisines && !cuisines.includes(r.cuisine)) continue;
       if (strictStyles && !r.styles.some((s) => styles.includes(s))) continue;
       if (!(req.diets ?? []).every((d) => r.diets.includes(d))) continue; // restrictions : jamais assouplies
-      const res = resolveRecipe(r, req.people, data, req.onlyStore);
-      if (res) pool.push(res);
+      // Chaque repas contient viande, volaille, poisson ou fruits de mer (les œufs ne comptent pas), sauf menu végétarien
+      if (!(req.diets ?? []).includes("vegetarien") && !(r.meat ?? hasMeat(r.ingredients))) continue;
+      const portion = mp ? portionFor(mp, meal, r) : 1;
+      const res = resolveRecipe(r, req.people * portion, data, req.onlyStore);
+      if (res) pool.push(mp ? { ...res, portion } : res);
     }
     return pool;
   };
@@ -348,6 +385,18 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         pool = scored.filter((x) => x.s > 0).slice(0, Math.max(12, good.length)).map((x) => x.r);
         if (!notices.some((n) => n.startsWith("Peu de spéciaux"))) notices.push("Peu de spéciaux correspondent à tes choix cette semaine : ton menu prend les recettes qui en profitent le plus.");
       } else if (!notices.some((n) => n.startsWith("Aucun spécial"))) notices.push("Aucun spécial ne correspond à tes choix cette semaine : ton menu est fait au meilleur prix habituel.");
+    }
+    if (mp) {
+      // Garde les recettes les plus proches de la cible (au moins 12, et au moins 6 plats différents)
+      const sorted = [...pool].sort((a, b) => macroDistance(mp, a.recipe) - macroDistance(mp, b.recipe));
+      const keep: Resolved[] = [];
+      const seen = new Set<string>();
+      for (const r of sorted) {
+        if (keep.length >= Math.max(10, Math.ceil(sorted.length * 0.15)) && seen.size >= 6) break; // les 15 % les plus proches
+        keep.push(r);
+        seen.add(normalize(r.recipe.name));
+      }
+      pool = keep;
     }
     for (const r of pool) usedCuisines.add(r.recipe.cuisine);
     // Moins de 4 plats différents : on complète avec d'autres cuisines plutôt que de répéter le même plat
@@ -382,7 +431,7 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         list.push(r);
         byCuisine.set(r.recipe.cuisine, list);
       }
-      for (const list of byCuisine.values()) list.sort((a, b) => approxCost(a, data, w) - approxCost(b, data, w));
+      for (const list of byCuisine.values()) list.sort((a, b) => approxCost(a, data, w) + fitCost(a) - approxCost(b, data, w) - fitCost(b));
       // Les cuisines choisies se relaient ; les recettes d'appoint (autres cuisines) ne servent qu'à compléter
       const all = [...byCuisine.keys()];
       const chosen = all.filter((c) => (req.cuisines as readonly string[]).includes(c));
@@ -417,11 +466,48 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
     if (v === undefined) { v = approxCost(r, data, w); acCache.set(k, v); }
     return v;
   };
+  // Diète par macros : shake et noix. Achetés une fois pour toute la période (semaine 1), comptés dans le budget.
+  const extraItems: ListItem[] = [];
+  let extrasCost = 0;
+  for (const e of mp?.extras ?? []) {
+    const prods = (e.ingredient ? data.products.get(e.ingredient) : undefined)?.filter((p) => p.sizeUnit !== "unite");
+    if (!prods?.length) continue; // prix non suivi : listé dans le bilan nutritionnel seulement
+    const need = e.perDay * 7 * req.weeks; // g ou ml (densité ≈ 1)
+    const cost = (p: StoreProduct) => Math.max(1, Math.ceil(need / p.sizeQty - 1e-9)) * p.price;
+    const best = prods.reduce((a, b) => (cost(b) < cost(a) ? b : a));
+    const packages = Math.max(1, Math.ceil(need / best.sizeQty - 1e-9));
+    const line = round2(packages * best.price);
+    extrasCost += line;
+    extraItems.push({
+      ingredient: e.ingredient!, product: best.productName, size: sizeLabel(best.sizeQty, best.sizeUnit), packages, unitPrice: best.price, total: line,
+      discounted: best.discounted, ...(best.discounted && best.regularPrice > best.price + 0.004 ? { regularPrice: best.regularPrice } : {}),
+      store: best.store as ListItem["store"], section: "Tes extras (noix)",
+    });
+  }
+  // Alcool acheté à l'épicerie (bière, vin, mélange des cocktails) : prix estimé, chaque semaine, compté dans le budget
+  const alcoholItems: ListItem[] = [];
+  let alcoholWeek = 0;
+  for (const a of mp?.alcohol ?? []) {
+    if (!(a.costPerWeek > 0)) continue;
+    alcoholWeek += a.costPerWeek;
+    alcoholItems.push({
+      ingredient: a.label, product: a.mixer ? `${a.mixer[0].toUpperCase()}${a.mixer.slice(1)} pour ${a.label.toLowerCase()} (l’alcool à la SAQ)` : a.label,
+      size: a.mixer ? `${a.perWeek} cocktail${a.perWeek > 1 ? "s" : ""}` : a.buy, packages: 1, unitPrice: a.costPerWeek, total: a.costPerWeek,
+      discounted: false, estimated: true, section: "Alcool et boissons (prix estimé)",
+    });
+  }
+  alcoholWeek = round2(alcoholWeek);
+  const alcoholCost = round2(alcoholWeek * req.weeks);
+  extrasCost = round2(extrasCost);
+  let goalT = round2(target - extrasCost - alcoholCost); // ce qui reste du budget pour les repas
+  if (goalT <= 0)
+    return { ok: false, reason: "budget", message: `Tes extras et ton alcool coûtent déjà ${(extrasCost + alcoholCost).toFixed(2).replace(".", ",")} $ pour la période : augmente ton budget pour avoir aussi des repas.`, minBudget: Math.ceil((extrasCost + alcoholCost + 20) / BUDGET_SAFETY) };
+
   let pantryOwned = false;
   let total = costPlan(slots, data, req.weeks).total;
   // maxPerWeek = nombre maximal de fois le même plat dans une semaine
   const reduce = (maxPerWeek: number) => {
-    for (let round = 0; round < 12 && total > target; round++) {
+    for (let round = 0; round < 12 && total > goalT; round++) {
       const weekCount = new Map<string, number>();
       const periodCount = new Map<string, number>();
       for (const o of slots) {
@@ -429,7 +515,7 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         periodCount.set(dish(o.r), (periodCount.get(dish(o.r)) ?? 0) + 1);
       }
       const est0 = slots.reduce((sum, o) => sum + ac(o.r, o.week), 0);
-      const goal = est0 * (target / total) - 0.5; // ce que l'estimation doit atteindre pour passer sous la cible
+      const goal = est0 * (goalT / total) - 0.5; // ce que l'estimation doit atteindre pour passer sous la cible
       let est = est0;
       let changed = false;
       const order = slots.map((_, i) => i).sort((x, y) => ac(slots[y].r, slots[y].week) - ac(slots[x].r, slots[x].week));
@@ -449,7 +535,7 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
         for (const r of pools.get(s.meal)!) {
           const rc = ac(r, s.week);
           if (rc >= c - 0.01 || inWeek(r) >= cap) continue;
-          const key = rank(r) * 1e6 + rc;
+          const key = rank(r) * 1e6 + rc + fitCost(r); // diète par macros : l'écart à la cible compte comme un coût
           if (key < bestKey) { bestKey = key; best = r; }
         }
         if (!best) continue;
@@ -469,39 +555,32 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
   };
   // Ordre des ajustements : la variété passe avant tout le reste.
   reduce(2);
-  if (total > target) {
+  if (total > goalT) {
     // 1. Le garde-manger (sel, huile, épices…) est supposé déjà à la maison : la variété est préservée
     pantryOwned = true;
     total = costPlan(slots, data, req.weeks, true).total;
     reduce(2);
     notices.push("Ton budget suppose que tu as déjà le garde-manger (sel, huile, épices…) : ces articles sont listés à part, sans être comptés.");
   }
-  if (total > target) {
+  if (total > goalT) {
     // 2. Un même plat peut revenir 3, puis au plus 4 fois dans la semaine (jamais plus)
     reduce(3);
-    if (total > target) reduce(4);
+    if (total > goalT) reduce(4);
+    if (total > goalT) reduce(5);
+    if (total > goalT) reduce(7);
     notices.push("Pour respecter ton budget, certains plats reviennent plus souvent dans la semaine.");
   }
-  if (total > target) {
-    // Budget très serré : on laisse libres les repas les plus chers, par paquets, jusqu'à passer sous le budget.
-    const requested = slots.length;
-    for (let round = 0; round < 40 && slots.length && total > target; round++) {
-      const est = slots.reduce((sum, o) => sum + ac(o.r, o.week), 0);
-      const goal = est * (target / total);
-      slots.sort((x, y) => ac(y.r, y.week) - ac(x.r, x.week));
-      let cut = est;
-      let n = 0;
-      while (n < slots.length - 1 && cut > goal) { cut -= ac(slots[n].r, slots[n].week); n++; }
-      slots.splice(0, Math.max(1, n));
-      total = costPlan(slots, data, req.weeks, pantryOwned).total;
-    }
-    slots.sort((x, y) => x.week - y.week || x.day - y.day);
-    // Des repas laissés libres : l'avis sur les plats répétés n'a plus d'intérêt
-    const k = notices.findIndex((n) => n.startsWith("Pour respecter ton budget, certains plats"));
-    if (k >= 0) notices.splice(k, 1);
-    notices.push(slots.length
-      ? `Ton budget couvre ${slots.length} repas sur ${requested}. Les autres sont laissés libres pour que tu ne dépasses jamais ton budget.`
-      : "Ce budget ne couvre pas encore un repas complet avec ces choix. Augmente un peu le montant pour obtenir un menu.");
+  if (total > goalT) {
+    // Chaque repas doit être rempli : jamais de repas libre. Le budget minimum = ce que coûte le menu le moins cher trouvé,
+    // extras compris, avec la marge habituelle entre les succursales.
+    const minBudget = Math.ceil((total + extrasCost + alcoholCost) / BUDGET_SAFETY);
+    const nMeals = req.meals.length * 7 * req.weeks;
+    return {
+      ok: false,
+      reason: "budget",
+      message: `Ce budget ne couvre pas tes ${nMeals} repas. Avec ${minBudget} $, chacun de tes repas est prévu${extrasCost + alcoholCost > 0 ? " (extras et alcool compris)" : ""}.`,
+      minBudget,
+    };
   }
 
   // 4. Même coût, meilleur ordre : dans chaque semaine, on répartit les plats pour éviter deux jours de suite identiques
@@ -520,7 +599,86 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
     }
   }
 
-  const costed = costPlan(slots, data, req.weeks, pantryOwned);
+  // Diète par macros : portions ajustées et compléments (poulet, thon, riz…) pour respecter la répartition visée.
+  // Le budget passe en premier : si les compléments le dépassent, on les réduit ; sinon on refuse avec le minimum.
+  let compSlots: Slot[] = [];
+  let fullBudget: number | undefined; // budget pour atteindre les macros à 100 %, si plus élevé que celui choisi
+  const dayComplements = new Map<string, { c: Complement; g: number }[]>(); // "semaine|jour" → compléments
+  if (mp) {
+    // Le complément le moins cher par gramme de protéines, et par gramme de glucides, offert dans les épiceries choisies
+    const priceOf = (c: Complement) => {
+      const p = data.products.get(c.ingredient)?.find((x) => x.sizeUnit === "g" || x.sizeUnit === "ml");
+      if (!p) return null;
+      const per = c.kind === "protein" ? c.per100.protein : c.per100.carbs;
+      return { p, perGram: p.price / p.sizeQty / per };
+    };
+    const pick = (kind: Complement["kind"], n: number) => COMPLEMENTS.filter((c) => c.kind === kind).map((c) => ({ c, q: priceOf(c) }))
+      .filter((x) => x.q).sort((a, b) => a.q!.perGram - b.q!.perGram).slice(0, n).map((x) => x.c);
+    // Deux sources de protéines (chacune au plus 250 g par jour) : une diète riche en protéines atteint sa cible
+    const comps = [...pick("protein", 2), ...pick("carbs", 1)];
+    const fixed = { kcal: mp.alcoholKcalDay + mp.extrasDay.kcal, protein: mp.extrasDay.protein, carbs: mp.extrasDay.carbs, fat: mp.extrasDay.fat };
+    const goal = { kcal: mp.target.kcal, protein: mp.grams.protein, carbs: mp.grams.carbs, fat: mp.grams.fat };
+    const solved = new Map<string, number[]>(); // "semaine|jour" → grammes de chaque complément
+    const before = slots.map((sl) => sl.r); // portions d'avant l'ajustement, si le budget ne permet pas plus
+    for (let w = 1; w <= req.weeks; w++) {
+      for (let d = 1; d <= 7; d++) {
+        const day = slots.filter((x) => x.week === w && x.day === d);
+        if (!day.length) continue;
+        const meals = day.map((x) => ({ kcal: x.r.recipe.kcal, protein: x.r.recipe.protein, carbs: x.r.recipe.carbs, fat: x.r.recipe.fat }));
+        const { x, grams } = solveDay(meals, day.map((y) => y.r.portion ?? 1), comps, fixed, goal);
+        // Chaque repas du jour reçoit sa propre portion (les quantités à acheter suivent)
+        day.forEach((sl, i) => {
+          const old = sl.r.portion ?? 1;
+          sl.r = { ...sl.r, portion: x[i], needs: sl.r.needs.map((n) => ({ ...n, qty: (n.qty * x[i]) / old })) };
+        });
+        solved.set(`${w}|${d}`, grams);
+      }
+    }
+    // Compléments à acheter : une « recette » invisible par semaine, avec la somme des grammes
+    const buildComps = (scale: number) => {
+      compSlots = [];
+      dayComplements.clear();
+      for (let w = 1; w <= req.weeks; w++) {
+        const needs: Need[] = [];
+        comps.forEach((c, j) => {
+          let g = 0;
+          for (let d = 1; d <= 7; d++) {
+            const gd = Math.round(((solved.get(`${w}|${d}`)?.[j] ?? 0) * scale) / 10) * 10;
+            if (gd > 0) { g += gd; dayComplements.set(`${w}|${d}`, [...(dayComplements.get(`${w}|${d}`) ?? []), { c, g: gd }]); }
+          }
+          const unit = data.products.get(c.ingredient)?.[0]?.sizeUnit;
+          if (g > 0 && unit && unit !== "unite") needs.push({ ingredient: c.ingredient, qty: g, source: "store", pantry: false });
+        });
+        if (needs.length) compSlots.push({ week: w, day: 0, meal: "souper", r: { recipe: { ...slots[0].r.recipe, id: `complements-${w}`, name: "Compléments" }, needs, homemade: [], specialty: [] } });
+      }
+    };
+    buildComps(1);
+    total = costPlan([...slots, ...compSlots], data, req.weeks, pantryOwned).total;
+    if (total > goalT) {
+      // Portions plus grandes ou compléments trop chers : on réduit les compléments jusqu'à respecter le budget
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 8; k++) {
+        const mid = (lo + hi) / 2;
+        buildComps(mid);
+        if (costPlan([...slots, ...compSlots], data, req.weeks, pantryOwned).total <= goalT) lo = mid; else hi = mid;
+      }
+      const fullCost = total;
+      fullBudget = Math.ceil((fullCost + extrasCost + alcoholCost) / BUDGET_SAFETY);
+      buildComps(lo);
+      total = costPlan([...slots, ...compSlots], data, req.weeks, pantryOwned).total;
+      if (total > goalT) {
+        // Même sans compléments, les portions agrandies coûtent trop : on revient aux portions de départ
+        slots.forEach((sl, k) => { sl.r = before[k]; });
+        compSlots = [];
+        dayComplements.clear();
+        total = costPlan(slots, data, req.weeks, pantryOwned).total;
+      }
+      // Le budget ne se dépasse jamais : les macros s'approchent de la cible autant que le budget le permet
+      notices.push("Pour respecter ton budget, les compléments (poulet, riz…) sont réduits : tes macros s’approchent de ta cible sans l’atteindre tout à fait.");
+    }
+  }
+
+  const costed = costPlan([...slots, ...compSlots], data, req.weeks, pantryOwned);
 
   // 4. Réponse
   const recipes: Record<string, RecipeView> = {};
@@ -536,7 +694,7 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       servings: req.people,
       ingredients: r.ingredients.map((i) => ({
         name: i.name,
-        display: scaleDisplay(i, req.people / r.servings),
+        display: scaleDisplay(i, (req.people * (s.r.portion ?? 1)) / r.servings),
       })),
       steps: r.steps,
       homemade: s.r.homemade.map((name) => {
@@ -549,7 +707,11 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
       }),
       kcal: r.kcal,
       protein: r.protein,
+      carbs: r.carbs,
+      fat: r.fat,
+      ...(s.r.portion ? { portion: Math.round((slots.filter((o) => o.r.recipe.id === r.id).reduce((n, o) => n + (o.r.portion ?? 1), 0) / slots.filter((o) => o.r.recipe.id === r.id).length) * 20) / 20 } : {}),
       image: imageUrl(r),
+      ...(r.image && r.imageCredit ? { imageCredit: r.imageCredit } : {}),
       costPerPortion: round2(approxCost(s.r, data, 1) / req.people),
     };
   }
@@ -570,7 +732,55 @@ export function planMenu(req: PlanRequest, data: PlannerData, imageUrl: (r: Plan
     weeks.push({ week: w, estimated: w > 1, days, list: pw.list, pantry: pw.pantry, specialty: pw.specialty, total: pw.total, ...(pantryOwned ? { pantryIncluded: false } : {}) });
   }
 
-  return { ok: true, request: req, weeks, recipes, total: costed.total, target, generatedAt: new Date().toISOString(), ...(notices.length ? { notices } : {}) };
+  if (extraItems.length) {
+    weeks[0].list.push(...extraItems);
+    weeks[0].total = round2(weeks[0].total + extrasCost);
+  }
+  if (alcoholItems.length) for (const wk of weeks) { wk.list.push(...alcoholItems.map((x) => ({ ...x }))); wk.total = round2(wk.total + alcoholWeek); }
+  const grandTotal = round2(costed.total + extrasCost + alcoholCost);
+  // Garde-fou : jamais au-dessus du budget visé
+  if (grandTotal > target + 0.005)
+    return { ok: false, reason: "budget", message: `Ce budget ne couvre pas tous tes repas. Avec ${Math.ceil(grandTotal / BUDGET_SAFETY)} $, chacun est prévu.`, minBudget: Math.ceil(grandTotal / BUDGET_SAFETY) };
+
+  let nutrition: Nutrition | undefined;
+  if (mp) {
+    const days: Nutrition["days"] = [];
+    for (let w = 1; w <= req.weeks; w++) {
+      for (let d = 1; d <= 7; d++) {
+        const sum = { kcal: mp.alcoholKcalDay + mp.extrasDay.kcal, protein: mp.extrasDay.protein, carbs: mp.extrasDay.carbs, fat: mp.extrasDay.fat };
+        for (const sl of slots) {
+          if (sl.week !== w || sl.day !== d) continue;
+          const k = sl.r.portion ?? 1, rr = sl.r.recipe;
+          sum.kcal += rr.kcal * k; sum.protein += rr.protein * k; sum.carbs += rr.carbs * k; sum.fat += rr.fat * k;
+        }
+        const dc = dayComplements.get(`${w}|${d}`) ?? [];
+        for (const { c, g } of dc) { sum.kcal += (c.per100.kcal * g) / 100; sum.protein += (c.per100.protein * g) / 100; sum.carbs += (c.per100.carbs * g) / 100; sum.fat += (c.per100.fat * g) / 100; }
+        days.push({ week: w, day: d, kcal: Math.round(sum.kcal), protein: Math.round(sum.protein), carbs: Math.round(sum.carbs), fat: Math.round(sum.fat),
+          ...(dc.length ? { complements: dc.map(({ c, g }) => `${g} g de ${c.label.toLowerCase()}`).join(" et ") } : {}) });
+      }
+    }
+    const share = req.meals.reduce((n, m) => n + MEAL_SHARE_OF[m], 0);
+    const priced = new Set(extraItems.map((x) => x.ingredient));
+    // Moyenne par jour de chaque complément, pour le bilan
+    const compAvg = new Map<string, number>();
+    for (const list of dayComplements.values()) for (const { c, g } of list) compAvg.set(c.label, (compAvg.get(c.label) ?? 0) + g);
+    const nDays = req.weeks * 7;
+    nutrition = {
+      target: mp.grams, share: Math.round(share * 100) / 100, alcohol: mp.alcohol, alcoholKcalPerDay: mp.alcoholKcalDay, days,
+      complements: [...compAvg.entries()].map(([label, g]) => ({ label, gramsPerDay: Math.round(g / nDays / 10) * 10 })).filter((x) => x.gramsPerDay > 0),
+      extras: mp.extras.map((x) => ({ id: x.id, label: x.label, perDay: x.perDay, unit: x.unit, kcalPerDay: x.kcal, priced: !!x.ingredient && priced.has(x.ingredient) })),
+    };
+    notices.push(`Diète par macros : les portions sont ajustées pour viser ${mp.target.kcal.toLocaleString("fr-CA")} calories par jour${mp.alcoholKcalDay ? `, dont ${mp.alcoholKcalDay} venant de l’alcool` : ""}. Les quantités de la liste d’épicerie suivent.`);
+    // Écart restant sur une macro (plus de 10 %) : on le dit franchement
+    const avg = (k: "protein" | "carbs" | "fat") => (days.length ? days.reduce((n, d) => n + d[k], 0) / days.length : 0);
+    const gaps = ([["protein", "protéines"], ["carbs", "glucides"], ["fat", "lipides"]] as const)
+      .filter(([k]) => Math.abs(avg(k) - mp.grams[k]) > mp.grams[k] * 0.1)
+      .map(([k, l]) => `${l} : ${Math.round(avg(k))} g sur ${mp.grams[k]} g`);
+    if (gaps.length) notices.push(`Ta cible n’est pas tout à fait atteinte (${gaps.join(" ; ")}). Les recettes disponibles et ton budget limitent l’ajustement.`);
+    if (share < 0.99) notices.push(`Tes repas planifiés couvrent environ ${Math.round(share * 100)} % de tes calories de la journée ; le reste va aux autres repas et aux collations.`);
+  }
+
+  return { ok: true, request: req, weeks, recipes, total: grandTotal, target, generatedAt: new Date().toISOString(), ...(notices.length ? { notices } : {}), ...(nutrition ? { nutrition } : {}), ...(fullBudget ? { fullBudget } : {}) };
 }
 
 function scaleDisplay(i: RecipeIngredient, factor: number): string {

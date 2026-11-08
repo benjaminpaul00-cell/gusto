@@ -1,11 +1,12 @@
-import { CUISINES, DIETS, MEALS, STORES, STYLES, type PlanRequest } from "../../shared/options";
+import { ALCOHOLS, CUISINES, DIETS, EXTRAS, MEALS, STORES, STYLES, type PlanRequest } from "../../shared/options";
 import { checkRateLimit, enqueue, loadPlannerData, loadPlannerDataFor, type Env } from "./db";
 import { getImage } from "./images";
-import { cleanup, enqueueDietTagging, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
+import { cleanup, enqueueDietTagging, enqueueMacroTagging, runJobs, savePrices, seed, type BookRecipe } from "./jobs";
 import type { StoreMatch } from "./epiceries";
-import { planMenu } from "./planner";
+import { planMenu, planMenuChecked } from "./planner";
 import { getSection, importExternal, listSection, moderate, moderationPage, priceSection, rateSection, searchRecipe, submitRecipe, setSectionPhoto, underLimit } from "./section";
 import { lookupIngredientPrice } from "./ingredientPrice";
+import { findFreePhoto } from "./freePhoto";
 import { imagePrompt, mistralImage } from "./ai";
 
 const json = (env: Env, body: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -37,6 +38,22 @@ function sanitize(body: any): PlanRequest {
     diets: pick(DIETS, body?.diets),
     budget: Math.round(Number(body?.budget) * 100) / 100,
     onlyStore: !!body?.onlyStore,
+    // Diète par macros (validée en détail par macroPlan), alcool et extras (shake, noix, huiles)
+    ...(body?.macros && typeof body.macros === "object"
+      ? { macros: { kcal: Number(body.macros.kcal), protein: Number(body.macros.protein), carbs: Number(body.macros.carbs), fat: Number(body.macros.fat) } }
+      : {}),
+    ...(body?.habits && typeof body.habits === "object"
+      ? { habits: {
+          alcohol: (Array.isArray(body.habits.alcohol) ? body.habits.alcohol : [])
+            .filter((a: any) => ALCOHOLS.some((x) => x.id === a?.id) && Number(a?.perWeek) > 0)
+            .slice(0, ALCOHOLS.length)
+            .map((a: any) => ({ id: a.id, perWeek: Math.min(70, Math.round(Number(a.perWeek))) })),
+          extras: (Array.isArray(body.habits.extras) ? body.habits.extras : [])
+            .filter((e: any) => EXTRAS.some((x) => x.id === e?.id) && Number(e?.perDay) > 0)
+            .slice(0, EXTRAS.length)
+            .map((e: any) => ({ id: e.id, perDay: Math.min(300, Math.round(Number(e.perDay))) })),
+        } }
+      : {}),
   };
 }
 
@@ -48,8 +65,27 @@ async function handlePlan(req: Request, env: Env): Promise<Response> {
   const request = sanitize(await req.json().catch(() => null));
   const data = await loadPlannerDataFor(env, request.stores?.length ? request.stores : [request.store ?? "maxi"]);
   const base = env.PUBLIC_API_URL.replace(/\/$/, "");
-  const result = planMenu(request, data, (r) => (r.image ? `${base}/img/${r.image}` : null));
+  const result = planMenuChecked(request, data, (r) => (r.image ? `${base}/img/${r.image}` : null));
   return json(env, result, result.ok ? 200 : result.reason === "invalid" ? 400 : 200);
+}
+
+/** Budget minimum vérifié pour les choix du formulaire : le planificateur l'essaie vraiment avant de le proposer. */
+async function handleMinimum(req: Request, env: Env): Promise<Response> {
+  const ip = req.headers.get("CF-Connecting-IP") ?? "inconnu";
+  if (!(await underLimit(env, ip, "minimum", 80))) return json(env, { ok: false, message: "Limite quotidienne atteinte." }, 429);
+  const request = sanitize({ ...((await req.json().catch(() => null)) ?? {}), budget: 10 });
+  const data = await loadPlannerDataFor(env, request.stores?.length ? request.stores : [request.store ?? "maxi"]);
+  const res = planMenuChecked(request, data, () => null);
+  if (!res.ok && !(res.reason === "budget" && res.minBudget)) return json(env, { ok: false, message: res.message });
+  const minBudget = res.ok ? 10 : res.minBudget!;
+  // Diète par macros : budget pour atteindre la cible à 100 % (vérifié en recalculant)
+  let full = minBudget;
+  for (let k = 0; k < 4; k++) {
+    const again = planMenu({ ...request, budget: full }, data, () => null);
+    if (!again.ok || !again.fullBudget || again.fullBudget <= full) break;
+    full = again.fullBudget;
+  }
+  return json(env, { ok: true, minBudget, fullBudget: full });
 }
 
 async function handleSection(req: Request, env: Env, path: string): Promise<Response> {
@@ -229,6 +265,8 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
   }
   // Classe toutes les recettes pour « sans lactose » et « diabétique »
   if (path === "/admin/tag-diets" && req.method === "POST") return json(env, await enqueueDietTagging(env));
+  // Glucides et lipides des recettes qui n'en ont pas encore (diète par macros)
+  if (path === "/admin/tag-macros" && req.method === "POST") return json(env, await enqueueMacroTagging(env));
   if (path === "/admin/seed") return json(env, { queued: await seed(env) });
   // Prix envoyés par scripts/prix.mjs : { items: [{ ingredient, matches: StoreMatch[] }] }
   if (path === "/admin/prices") {
@@ -254,8 +292,18 @@ async function handleAdmin(req: Request, env: Env, path: string): Promise<Respon
     }
     return json(env, { saved });
   }
-  if (path === "/admin/run") return json(env, { done: await runJobs(env, 40, 2) }); // 2 tâches : réponse rapide
+  // 2 tâches : réponse rapide. ?kind=tag_macros : seulement ce type de tâche
+  if (path === "/admin/run") return json(env, { done: await runJobs(env, 40, 2, new URL(req.url).searchParams.get("kind") ?? undefined) });
   if (path === "/admin/refresh-prices") { await enqueue(env, "refresh_prices", { offset: 0 }); return json(env, { queued: true }); }
+  // Essai d'une photo libre pour une recette, sans rien enregistrer
+  const tryPhoto = path.match(/^\/admin\/photo-libre\/(.+)$/);
+  if (tryPhoto) {
+    const r = await env.DB.prepare("SELECT name, image_prompt FROM recipes WHERE id = ?").bind(decodeURIComponent(tryPhoto[1])).first<{ name: string; image_prompt: string | null }>();
+    if (!r) return json(env, { ok: false }, 404);
+    const log: unknown[] = [];
+    const found = await findFreePhoto(env, r.name, r.image_prompt, log);
+    return json(env, { name: r.name, found: found ? found.credit : null, log });
+  }
   const regen = path.match(/^\/admin\/regen\/(.+)$/);
   if (regen) { await enqueue(env, "gen_image", { recipeId: decodeURIComponent(regen[1]) }); return back(); }
   // Regénère les photos manquantes (ex. après un changement de stockage).
@@ -281,6 +329,7 @@ const app = {
 
     try {
       if (path === "/api/plan" && req.method === "POST") return await handlePlan(req, env);
+      if (path === "/api/plan/minimum" && req.method === "POST") return await handleMinimum(req, env);
       // Section Recettes
       if (path.startsWith("/api/section")) return await handleSection(req, env, path);
       // Prix d'un ingrédient saisi à la main, par épicerie

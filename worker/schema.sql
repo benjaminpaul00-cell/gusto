@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS recipes (
   steps TEXT NOT NULL,           -- JSON : ["..."]
   kcal REAL NOT NULL,
   protein REAL NOT NULL,
+  carbs REAL,                    -- glucides par portion (g), estimés (diète par macros)
+  fat REAL,                      -- lipides par portion (g), estimés
   image_prompt TEXT,
   image_key TEXT,                -- clé R2, NULL tant que l'image n'existe pas
+  image_credit TEXT,             -- JSON : auteur, licence et source d'une photo libre ; NULL = image générée
   status TEXT NOT NULL DEFAULT 'active', -- active | rejected
   created_at INTEGER NOT NULL
 );
