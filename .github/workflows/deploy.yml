@@ -40,6 +40,7 @@ jobs:
           EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
           EXPO_PUBLIC_ADSENSE_CLIENT: ${{ vars.EXPO_PUBLIC_ADSENSE_CLIENT }}
           EXPO_PUBLIC_ADSENSE_SLOT: ${{ vars.EXPO_PUBLIC_ADSENSE_SLOT }}
+          EXPO_PUBLIC_ADSENSE_SLOT_VERTICAL: ${{ vars.EXPO_PUBLIC_ADSENSE_SLOT_VERTICAL }}
           EXPO_PUBLIC_SITE_URL: ${{ vars.EXPO_PUBLIC_SITE_URL }}
       - uses: cloudflare/wrangler-action@v3
         with:

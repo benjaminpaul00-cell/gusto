@@ -7,7 +7,9 @@ import { Check, ChevronRight, ExternalLink, ListPlus, Minus, Plus, Printer, Shop
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
 import { STORES, type ListItem, type StoreId } from "../../../shared/options";
+import { AdSlot } from "../src/components/AdSlot";
 import { Chip } from "../src/components/Chip";
+import { useConsent } from "../src/consent";
 import { SourceBadge, Stars } from "../src/components/RecipeBits";
 import { Screen } from "../src/components/Screen";
 import { Button } from "../src/components/ui";
@@ -83,6 +85,7 @@ export default function RecettePage() {
 
 function Recipe({ recipe, setRecipe }: { recipe: SectionRecipe; setRecipe: (r: SectionRecipe) => void }) {
   const t = useTheme();
+  const { consent } = useConsent();
   const [people, setPeople] = useState(recipe.servings);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [done, setDone] = useState<Set<number>>(new Set());
@@ -157,7 +160,9 @@ function Recipe({ recipe, setRecipe }: { recipe: SectionRecipe; setRecipe: (r: S
 
       {/* Ingrédients et préparation */}
       <View {...r("stack-md")} style={{ flexDirection: "row", gap: space(12), alignItems: "flex-start" }}>
-        <View {...r("reveal-left", "full-md", "sticky")} style={{ width: 380, gap: space(4), padding: space(6), borderRadius: radius.xl, borderWidth: 2, borderColor: t.edge, backgroundColor: t.surfaceAlt }}>
+        {/* Colonne de côté : ingrédients (collants au défilement), puis l'annonce verticale tout en bas */}
+        <View {...r("full-md")} style={{ width: 380, alignSelf: "stretch" }}>
+        <View {...r("reveal-left", "full-md", "sticky")} style={{ gap: space(4), padding: space(6), borderRadius: radius.xl, borderWidth: 2, borderColor: t.edge, backgroundColor: t.surfaceAlt }}>
           <Text role="heading" aria-level={2} style={{ fontFamily: font.display, fontSize: 28, color: t.ink }}>Ingrédients</Text>
           <View {...r("noprint")} style={{ flexDirection: "row", alignItems: "center", gap: space(3) }}>
             <Round icon={Minus} label="Une portion de moins" disabled={people <= 1} onPress={() => setPeople(people - 1)} />
@@ -179,6 +184,10 @@ function Recipe({ recipe, setRecipe }: { recipe: SectionRecipe; setRecipe: (r: S
               );
             })}
           </View>
+        </View>
+        <View {...r("noprint")} style={{ marginTop: "auto" as any, paddingTop: space(6) }}>
+          <AdSlot consent={consent} kind="vertical" />
+        </View>
         </View>
 
         <View {...r("full-md")} style={{ flex: 1, gap: space(2) }}>

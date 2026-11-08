@@ -3,11 +3,16 @@ import { useEffect, useRef } from "react";
 import { View } from "react-native";
 
 const CLIENT = process.env.EXPO_PUBLIC_ADSENSE_CLIENT;
-const SLOT = process.env.EXPO_PUBLIC_ADSENSE_SLOT;
+// Deux blocs d'annonce AdSense : « horizontale » (dans le texte) et « verticale » (colonne de côté).
+const SLOTS = {
+  horizontal: process.env.EXPO_PUBLIC_ADSENSE_SLOT,
+  vertical: process.env.EXPO_PUBLIC_ADSENSE_SLOT_VERTICAL,
+};
 let scriptLoaded = false;
 
-export function AdSlot({ consent }: { consent: "all" | "essential" | null }) {
+export function AdSlot({ consent, kind = "horizontal" }: { consent: "all" | "essential" | null; kind?: "horizontal" | "vertical" }) {
   const ref = useRef<any>(null);
+  const SLOT = SLOTS[kind];
   useEffect(() => {
     if (!CLIENT || !SLOT || consent !== "all") return;
     if (!scriptLoaded) {
@@ -31,7 +36,7 @@ export function AdSlot({ consent }: { consent: "all" | "essential" | null }) {
     try {
       ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
     } catch {}
-  }, [consent]);
+  }, [consent, SLOT]);
   if (!CLIENT || !SLOT || consent !== "all") return null;
-  return <View ref={ref} style={{ minHeight: 90, marginVertical: 16 }} />;
+  return <View ref={ref} style={{ minHeight: kind === "vertical" ? 250 : 90, marginVertical: 16 }} />;
 }
