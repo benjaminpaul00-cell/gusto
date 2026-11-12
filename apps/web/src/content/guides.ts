@@ -3,6 +3,34 @@ import type { Article } from "./types";
 
 export const GUIDES: Article[] = [
   {
+    slug: "budget-epicerie-100-dollars",
+    title: "Épicerie à 100 $ : exemple de panier et de menus au Québec",
+    description: "Un exemple chiffré pour répartir 100 $ entre les ingrédients, les repas et une marge de sécurité, sans prétendre connaître les prix de ta succursale.",
+    blocks: [
+      { p: "Un budget de 100 $ ne nourrit pas le même nombre de personnes selon l'âge, les besoins et les aliments déjà à la maison. Plutôt que de promettre un panier universel, voici une méthode vérifiable pour bâtir le tien. Les montants ci-dessous sont des hypothèses de calcul, pas des prix relevés en magasin." },
+      { h: "Répartir le budget avant de magasiner" },
+      { p: "Réserve 10 $ pour les variations de prix et les oublis. Il reste 90 $ à répartir entre les ingrédients. Exemple de plafonds : 25 $ pour les protéines, 20 $ pour les fruits et légumes, 20 $ pour les féculents et céréales, 15 $ pour les produits laitiers ou substituts, et 10 $ pour les conserves et assaisonnements. La somme est bien de 90 $." },
+      { h: "Construire les repas à partir des mêmes achats" },
+      { ul: [
+        "Souper 1 : riz, haricots et légumes sautés.",
+        "Souper 2 : pâtes à la sauce tomate et lentilles.",
+        "Souper 3 : omelette aux légumes et pommes de terre.",
+        "Souper 4 : soupe de légumes et tartines.",
+        "Souper 5 : riz frit aux œufs et légumes restants.",
+        "Souper 6 : chili de haricots servi sur du riz.",
+        "Souper 7 : pâtes avec les légumes et la sauce restants.",
+      ] },
+      { h: "Le piège du prix par portion" },
+      { p: "Si une recette utilise 250 g de riz d'un sac de 1 kg vendu 3,60 $, le riz consommé vaut 0,90 $. Mais si tu n'as pas déjà le sac, tu débourses 3,60 $ à la caisse. Pour respecter un plafond de 100 $, additionne les emballages à acheter, pas seulement les quantités utilisées dans les recettes." },
+      { h: "Vérifier les vrais prix" },
+      { p: "Note chaque produit, son format, son prix affiché et le nombre d'emballages nécessaires. Additionne les montants. Si le total dépasse 90 $, remplace d'abord les ingrédients coûteux qui ne servent qu'à une recette. Compare aussi le prix au 100 g : un emballage moins cher à l'unité peut revenir plus cher pour la même quantité." },
+      { h: "Adapter à ta famille" },
+      { p: "Pour quatre personnes, sept soupers représentent 28 portions. Un budget de 100 $ réservé uniquement à ces soupers équivaut à environ 3,57 $ par portion. Si les 100 $ doivent aussi payer les déjeuners, les dîners et les collations, il faut répartir le budget entre tous ces repas avant de choisir les recettes." },
+      { tip: "Avant de payer, conserve une marge pour les taxes applicables aux produits taxables et pour les écarts entre les prix affichés en ligne et ceux de ta succursale." },
+    ],
+  },
+
+  {
     slug: "epicerie-petit-budget",
     title: "Faire l’épicerie avec un petit budget au Québec",
     description: "Une méthode simple pour nourrir toute la maisonnée sans dépasser ton budget : planifier, comparer, acheter juste assez.",
