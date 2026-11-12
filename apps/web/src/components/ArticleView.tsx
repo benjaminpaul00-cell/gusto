@@ -98,6 +98,7 @@ export function Blocks({ blocks, cta = true, ads = true }: { blocks: Block[]; ct
           )}
         </View>
       ))}
+      {ads && blocks.length >= 8 ? <AdSlot consent={consent} kind="native" /> : null}
       {cta ? <CallToAction /> : null}
     </View>
   );
