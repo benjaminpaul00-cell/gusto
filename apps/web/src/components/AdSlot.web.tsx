@@ -1,7 +1,7 @@
 // Adsterra : emplacements publicitaires web visibles sans condition de consentement.
 // Les applications natives continuent d'utiliser AdSlot.tsx (AdMob à venir).
 import { useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 
 type Consent = "all" | "essential" | null;
 type Kind = "horizontal" | "vertical" | "native";
@@ -58,5 +58,10 @@ export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kin
     return () => element.replaceChildren();
   }, [kind, format.key]);
 
-  return <View ref={host} accessibilityLabel="Publicité" style={{ alignSelf: "center", width: kind === "native" ? "100%" : format.width, maxWidth: "100%", minHeight: kind === "native" ? 150 : format.height, marginVertical: 16, overflow: "hidden" }} />;
+  return (
+    <View accessibilityLabel="Emplacement publicitaire" style={{ alignSelf: "center", width: kind === "native" ? "100%" : format.width, maxWidth: "100%", minHeight: kind === "native" ? 170 : format.height + 22, marginVertical: 16, backgroundColor: "#F5F6FA", overflow: "hidden" }}>
+      <Text style={{ textAlign: "center", color: "#777777", fontSize: 11, height: 22 }}>Publicité</Text>
+      <View ref={host} style={{ width: "100%", minHeight: kind === "native" ? 148 : format.height }} />
+    </View>
+  );
 }
