@@ -1,42 +1,64 @@
-// Publicité Google AdSense (web). Chargée seulement si l'utilisateur a accepté les témoins.
-import { useEffect, useRef } from "react";
+// Adsterra : publicités web, uniquement après consentement explicite.
+// Les applications natives continuent d'utiliser AdSlot.tsx (AdMob à venir).
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
-const CLIENT = process.env.EXPO_PUBLIC_ADSENSE_CLIENT;
-// Deux blocs d'annonce AdSense : « horizontale » (dans le texte) et « verticale » (colonne de côté).
-const SLOTS = {
-  horizontal: process.env.EXPO_PUBLIC_ADSENSE_SLOT,
-  vertical: process.env.EXPO_PUBLIC_ADSENSE_SLOT_VERTICAL,
-};
-let scriptLoaded = false;
+type Consent = "all" | "essential" | null;
+type Kind = "horizontal" | "vertical" | "native";
 
-export function AdSlot({ consent, kind = "horizontal" }: { consent: "all" | "essential" | null; kind?: "horizontal" | "vertical" }) {
-  const ref = useRef<any>(null);
-  const SLOT = SLOTS[kind];
+const BANNERS = {
+  mobile: { key: "c07038e23aec4c879d29cb1abf93053d", width: 320, height: 50 },
+  rectangle: { key: "42b137dddd518207ec3e360ccb3f4280", width: 300, height: 250 },
+  desktop: { key: "ccf48721e75697e89265b869169c858b", width: 728, height: 90 },
+} as const;
+const NATIVE_KEY = "3a4c50f3b209fbd10a81d3b65abded2b";
+
+export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kind?: Kind }) {
+  const host = useRef<any>(null);
+  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 0);
+
   useEffect(() => {
-    if (!CLIENT || !SLOT || consent !== "all") return;
-    if (!scriptLoaded) {
-      const s = document.createElement("script");
-      s.async = true;
-      s.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${CLIENT}`;
-      s.crossOrigin = "anonymous";
-      document.head.appendChild(s);
-      scriptLoaded = true;
+    if (kind === "native") return;
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [kind]);
+
+  const format = kind === "vertical" ? BANNERS.rectangle : width >= 760 ? BANNERS.desktop : BANNERS.mobile;
+
+  useEffect(() => {
+    const element: HTMLElement | null = host.current;
+    if (!element) return;
+    element.replaceChildren();
+    if (consent !== "all") return;
+
+    if (kind === "native") {
+      const container = document.createElement("div");
+      container.id = `container-${NATIVE_KEY}`;
+      element.appendChild(container);
+      const script = document.createElement("script");
+      script.async = true;
+      script.setAttribute("data-cfasync", "false");
+      script.src = `https://bauval.org/21/${NATIVE_KEY}`;
+      element.insertBefore(script, container);
+    } else {
+      // L'annonceur lit atOptions lors de l'exécution du script.
+      // L'iframe isole les variables globales des autres publicités.
+      const frame = document.createElement("iframe");
+      frame.title = "Publicité";
+      frame.width = String(format.width);
+      frame.height = String(format.height);
+      frame.setAttribute("scrolling", "no");
+      frame.setAttribute("frameborder", "0");
+      frame.style.border = "0";
+      frame.style.maxWidth = "100%";
+      const doc = `<!doctype html><html><body style="margin:0"><script>var atOptions={key:'${format.key}',format:'iframe',height:${format.height},width:${format.width},params:{}};<\/script><script src="https://bauval.org/22/${format.key}"><\/script></body></html>`;
+      frame.srcdoc = doc;
+      element.appendChild(frame);
     }
-    const host: HTMLElement | null = ref.current;
-    if (!host || host.childElementCount) return;
-    const ins = document.createElement("ins");
-    ins.className = "adsbygoogle";
-    ins.style.display = "block";
-    ins.setAttribute("data-ad-client", CLIENT);
-    ins.setAttribute("data-ad-slot", SLOT);
-    ins.setAttribute("data-ad-format", "auto");
-    ins.setAttribute("data-full-width-responsive", "true");
-    host.appendChild(ins);
-    try {
-      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-    } catch {}
-  }, [consent, SLOT]);
-  if (!CLIENT || !SLOT || consent !== "all") return null;
-  return <View ref={ref} style={{ minHeight: kind === "vertical" ? 250 : 90, marginVertical: 16 }} />;
+    return () => element.replaceChildren();
+  }, [consent, kind, format.key]);
+
+  if (consent !== "all") return null;
+  return <View ref={host} accessibilityLabel="Publicité" style={{ alignSelf: "center", width: kind === "native" ? "100%" : format.width, maxWidth: "100%", minHeight: kind === "native" ? 150 : format.height, marginVertical: 16, overflow: "hidden" }} />;
 }
