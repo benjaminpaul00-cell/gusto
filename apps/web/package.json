@@ -9,8 +9,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
-    "deploy": "npx expo export -p web && wrangler deploy",
-    "preview": "npx expo export -p web && wrangler dev"
+    "deploy": "npm run build:web && wrangler deploy",
+    "preview": "npm run build:web && wrangler dev"
   },
   "dependencies": {
     "@expo-google-fonts/instrument-serif": "^0.4.1",
