@@ -106,6 +106,9 @@ cd apps/web && npm run web                             # EXPO_PUBLIC_API_URL=htt
 
 ### Déploiement automatique avec GitHub (facultatif)
 
+> Relance du pipeline : 11 novembre 2026. Le workflow doit compiler et publier sur Cloudflare si les secrets requis sont configurés.
+
+
 `.github/workflows/deploy.yml` teste et déploie l’API puis le site à chaque `push` sur `main`. Secrets du dépôt : `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Variables : `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SITE_URL`, `EXPO_PUBLIC_ADSENSE_CLIENT`, `EXPO_PUBLIC_ADSENSE_SLOT`.
 
 ## Identité visuelle
