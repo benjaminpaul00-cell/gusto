@@ -4,18 +4,15 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Platform, View } from "react-native";
-import { ConsentBanner } from "../src/components/ConsentBanner";
-import { ConsentProvider, useConsent } from "../src/consent";
+import { ConsentProvider } from "../src/consent";
 import { useTheme } from "../src/theme";
 
 function Shell() {
   const t = useTheme();
-  const { consent, ready, choose } = useConsent();
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.bg } }} />
-      {ready && consent === null ? <ConsentBanner onChoose={choose} /> : null}
     </View>
   );
 }
