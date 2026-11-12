@@ -1,4 +1,4 @@
-// Adsterra : publicités web, uniquement après consentement explicite.
+// Adsterra : emplacements publicitaires web visibles sans condition de consentement.
 // Les applications natives continuent d'utiliser AdSlot.tsx (AdMob à venir).
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
@@ -30,7 +30,6 @@ export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kin
     const element: HTMLElement | null = host.current;
     if (!element) return;
     element.replaceChildren();
-    if (consent !== "all") return;
 
     if (kind === "native") {
       const container = document.createElement("div");
@@ -57,8 +56,7 @@ export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kin
       element.appendChild(frame);
     }
     return () => element.replaceChildren();
-  }, [consent, kind, format.key]);
+  }, [kind, format.key]);
 
-  if (consent !== "all") return null;
   return <View ref={host} accessibilityLabel="Publicité" style={{ alignSelf: "center", width: kind === "native" ? "100%" : format.width, maxWidth: "100%", minHeight: kind === "native" ? 150 : format.height, marginVertical: 16, overflow: "hidden" }} />;
 }
