@@ -1,6 +1,6 @@
 import type { PlanRequest, PlanResponse } from "../../../shared/options";
 
-const API = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const API = (process.env.EXPO_PUBLIC_API_URL?.trim() || "https://api.mongusto.ca").replace(/\/$/, "");
 
 /** Budget minimum vérifié par le serveur pour ces choix (null si inconnu). */
 export async function requestMinimum(req: PlanRequest, signal?: AbortSignal): Promise<{ min: number; full: number } | null> {
