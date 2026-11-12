@@ -30,50 +30,8 @@ function enqueueBanner(element: HTMLElement, options: BannerOptions) {
 }
 
 
-export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kind?: Kind }) {
-  const host = useRef<any>(null);
-  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 0);
-
-  useEffect(() => {
-    if (kind === "native") return;
-    const onResize = () => setWidth(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [kind]);
-
-  const format = kind === "vertical" ? BANNERS.rectangle : width >= 760 ? BANNERS.desktop : BANNERS.mobile;
-
-  useEffect(() => {
-    const element: HTMLElement | null = host.current;
-    if (!element) return;
-    element.replaceChildren();
-
-    if (kind === "native") {
-      const container = document.createElement("div");
-      container.id = `container-${NATIVE_KEY}`;
-      element.appendChild(container);
-      const script = document.createElement("script");
-      script.async = true;
-      script.setAttribute("data-cfasync", "false");
-      script.src = `https://bauval.org/21/${NATIVE_KEY}`;
-      element.insertBefore(script, container);
-    } else {
-      // Le script officiel doit être ajouté au DOM, et non dans iframe.srcdoc.
-      // atOptions est global : les bannières sont chargées en série.
-      const options = {
-        key: format.key, format: "iframe", height: format.height,
-        width: format.width, params: {},
-      };
-      enqueueBanner(element, options);
-
-    }
-    return () => element.replaceChildren();
-  }, [kind, format.key]);
-
-  return (
-    <View accessibilityLabel="Emplacement publicitaire" style={{ alignSelf: "center", width: kind === "native" ? "100%" : format.width, maxWidth: "100%", minHeight: kind === "native" ? 170 : format.height + 22, marginVertical: 16, backgroundColor: "#F5F6FA", overflow: "hidden" }}>
-      <Text style={{ textAlign: "center", color: "#777777", fontSize: 11, height: 22 }}>Publicité</Text>
-      <View ref={host} style={{ width: "100%", minHeight: kind === "native" ? 148 : format.height }} />
-    </View>
-  );
+// Diffusion suspendue : Adsterra a affiché une annonce de rencontres inadaptée
+// à un site familial. Réactiver après blocage des catégories sensibles côté régie.
+export function AdSlot(_props: { consent: Consent; kind?: Kind }) {
+  return null;
 }
