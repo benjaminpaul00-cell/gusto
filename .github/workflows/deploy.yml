@@ -1,6 +1,6 @@
 # Déploiement automatique sur Cloudflare à chaque « push » sur main.
 # Secrets du dépôt (Settings → Secrets and variables → Actions) :
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+#   CLOUDFLARE_API_TOKEN (API), CLOUDFLARE_API_TOKEN_SITE (site), CLOUDFLARE_ACCOUNT_ID
 # Variables du dépôt :
 #   EXPO_PUBLIC_API_URL, EXPO_PUBLIC_ADSENSE_CLIENT, EXPO_PUBLIC_ADSENSE_SLOT, EXPO_PUBLIC_SITE_URL
 name: Déploiement
@@ -44,7 +44,7 @@ jobs:
           EXPO_PUBLIC_SITE_URL: ${{ vars.EXPO_PUBLIC_SITE_URL }}
       - uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_SITE }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/web
           command: deploy
