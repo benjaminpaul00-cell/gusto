@@ -2,7 +2,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ListItem, StoreId } from "../../../shared/options";
 
-const API = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const API = (process.env.EXPO_PUBLIC_API_URL?.trim() || "https://api.mongusto.ca").replace(/\/$/, "");
 const OFFLINE = "Connexion impossible. Vérifie ta connexion Internet et réessaie.";
 
 export type Source = "ia" | "communaute" | "externe";
