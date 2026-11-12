@@ -12,6 +12,7 @@ export const Screen = forwardRef<ScrollView, { children: ReactNode; onCta?: () =
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <SiteHeader onCta={onCta} />
       <ScrollView ref={ref} style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+        <AdSlot consent={null} kind="horizontal" />
         <View role="main">{children}</View>
         <AdSlot consent={null} kind="horizontal" />
         {footer ? <SiteFooter /> : null}
