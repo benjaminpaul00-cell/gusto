@@ -13,6 +13,23 @@ const BANNERS = {
 } as const;
 const NATIVE_KEY = "3a4c50f3b209fbd10a81d3b65abded2b";
 
+type BannerOptions = { key: string; format: string; height: number; width: number; params: Record<string, never> };
+let bannerQueue: Promise<void> = Promise.resolve();
+function enqueueBanner(element: HTMLElement, options: BannerOptions) {
+  const load = () => new Promise<void>((resolve) => {
+    if (!element.isConnected) { resolve(); return; }
+    (window as any).atOptions = options;
+    const script = document.createElement("script");
+    script.src = "https://bauval.org/22/" + options.key;
+    script.async = false;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    element.appendChild(script);
+  });
+  bannerQueue = bannerQueue.then(load, load);
+}
+
+
 export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kind?: Kind }) {
   const host = useRef<any>(null);
   const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 0);
@@ -41,19 +58,14 @@ export function AdSlot({ consent, kind = "horizontal" }: { consent: Consent; kin
       script.src = `https://bauval.org/21/${NATIVE_KEY}`;
       element.insertBefore(script, container);
     } else {
-      // L'annonceur lit atOptions lors de l'exécution du script.
-      // L'iframe isole les variables globales des autres publicités.
-      const frame = document.createElement("iframe");
-      frame.title = "Publicité";
-      frame.width = String(format.width);
-      frame.height = String(format.height);
-      frame.setAttribute("scrolling", "no");
-      frame.setAttribute("frameborder", "0");
-      frame.style.border = "0";
-      frame.style.maxWidth = "100%";
-      const doc = `<!doctype html><html><body style="margin:0"><script>var atOptions={key:'${format.key}',format:'iframe',height:${format.height},width:${format.width},params:{}};<\/script><script src="https://bauval.org/22/${format.key}"><\/script></body></html>`;
-      frame.srcdoc = doc;
-      element.appendChild(frame);
+      // Le script officiel doit être ajouté au DOM, et non dans iframe.srcdoc.
+      // atOptions est global : les bannières sont chargées en série.
+      const options = {
+        key: format.key, format: "iframe", height: format.height,
+        width: format.width, params: {},
+      };
+      enqueueBanner(element, options);
+
     }
     return () => element.replaceChildren();
   }, [kind, format.key]);
