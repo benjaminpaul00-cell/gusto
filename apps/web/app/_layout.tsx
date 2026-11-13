@@ -4,23 +4,11 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Platform, View } from "react-native";
-import { useEffect } from "react";
 import { ConsentProvider } from "../src/consent";
 import { useTheme } from "../src/theme";
 
 function Shell() {
   const t = useTheme();
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    const id = "adsterra-socialbar-script";
-    if (document.getElementById(id)) return;
-    const script = document.createElement("script");
-    script.id = id;
-    script.setAttribute("data-cfasync", "false");
-    script.src = "https://bauval.org/14/18d173a7c1b4d4d1ca93eaa2ec6560b0";
-    document.body.appendChild(script);
-    return () => { script.remove(); };
-  }, []);
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <StatusBar style="auto" />
