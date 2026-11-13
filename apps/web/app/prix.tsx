@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View, type ViewStyle } from "react-native";
 import type { StoreId } from "../../../shared/options";
 import { Page } from "../src/components/ArticleView";
+import { AdSlot } from "../src/components/AdSlot";
 import { Button } from "../src/components/ui";
 import { StoreLogo } from "../src/stores";
 import { font, money, r, radius, space, useTheme } from "../src/theme";
@@ -68,6 +69,8 @@ export default function Prix() {
         </View>
       </View>
 
+      <AdSlot consent={null} kind="vertical" />
+
       {busy && !res ? <ActivityIndicator color={t.primary} style={{ marginTop: space(10) }} /> : null}
 
       {res && !busy ? (
@@ -125,6 +128,7 @@ export default function Prix() {
                 </View>
               ))}
             </View>
+            <AdSlot consent={null} kind="native" />
             <Text style={{ fontFamily: font.medium, fontSize: 13, lineHeight: 19, color: t.muted }}>
               Prix relevés chaque semaine dans les grandes épiceries du Québec. Ils peuvent varier selon la succursale. Une épicerie absente n’a pas de prix connu pour ce produit.
             </Text>
