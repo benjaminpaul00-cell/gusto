@@ -4,6 +4,7 @@ import { ArrowRight, PenLine, Search } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TextInput, View, type ViewStyle } from "react-native";
 import { Page } from "../../src/components/ArticleView";
+import { AdSlot } from "../../src/components/AdSlot";
 import { Chip } from "../../src/components/Chip";
 import { RecipeRow, TopList } from "../../src/components/RecipeBits";
 import { Button } from "../../src/components/ui";
@@ -75,6 +76,8 @@ export default function Recettes() {
         {searchError ? <Text accessibilityRole="alert" style={{ fontFamily: font.semibold, fontSize: 15, color: "#FFFFFF", backgroundColor: "rgba(255,95,162,.35)", padding: space(3), borderRadius: radius.md }}>{searchError}</Text> : null}
       </View>
 
+      <AdSlot consent={null} kind="vertical" />
+
       {/* Palmarès et partage */}
       <View {...r("stack-md")} style={{ flexDirection: "row", gap: space(8), marginTop: space(12), alignItems: "stretch" }}>
         <View style={{ flex: 1.5 }}><TopList items={top} /></View>
@@ -105,6 +108,7 @@ export default function Recettes() {
           {SORTS.map((s) => <Chip key={s.id} radio label={s.label} selected={tri === s.id} onPress={() => setTri(s.id)} />)}
         </View>
 
+        {items && items.length > 0 ? <AdSlot consent={null} kind="native" /> : null}
         {error ? <Text accessibilityRole="alert" style={{ fontFamily: font.semibold, fontSize: 15, color: t.danger }}>{error}</Text> : null}
         {items === null ? <ActivityIndicator color={t.primary} style={{ marginVertical: space(10) }} /> : items.length === 0 ? (
           <Text style={{ fontFamily: font.medium, fontSize: 16, color: t.muted, marginVertical: space(8) }}>
