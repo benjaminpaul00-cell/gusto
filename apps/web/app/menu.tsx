@@ -138,8 +138,9 @@ function Menu() {
           {tab === "menu" ? (
             <View style={{ gap: space(6) }}>
               {plan.nutrition ? <NutritionPanel n={plan.nutrition} week={week} t={t} /> : null}
-              {w.days.map((d) => (
+              {w.days.map((d, dayIndex) => (
                 <View key={d.day} style={{ gap: space(3) }}>
+                  {dayIndex === 3 ? <AdSlot consent={consent} kind="vertical" /> : null}
                   <Text style={s.day}>{DAYS[d.day - 1]}</Text>
                   {plan.request.meals.map((meal) => {
                     const m = d.meals.find((x) => x.meal === meal);
