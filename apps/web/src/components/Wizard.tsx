@@ -17,6 +17,7 @@ import { saveForm, savePlan } from "../storage";
 import { StoreLogo } from "../stores";
 import { font, money, r, radius, space, useTheme, type Theme } from "../theme";
 import { Button } from "./ui";
+import { AdSlot } from "./AdSlot";
 
 type Icon = ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 // Rien n'est choisi d'avance : c'est l'utilisateur qui répond à chaque question.
@@ -363,6 +364,11 @@ export function Wizard() {
             )}
           </View>
         )}
+      </View>
+
+      {/* Persistent banner throughout the menu creation steps. */}
+      <View style={{ paddingHorizontal: space(3), borderTopWidth: 1, borderTopColor: t.line }}>
+        <AdSlot consent={null} kind="horizontal" />
       </View>
 
       {/* Navigation */}
