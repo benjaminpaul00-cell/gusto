@@ -66,12 +66,12 @@ export function Blocks({ blocks, cta = true, ads = true }: { blocks: Block[]; ct
   const { consent } = useConsent();
   const p = { fontFamily: font.body, color: t.ink, fontSize: 18.5, lineHeight: 32, marginTop: space(5) };
   // Une annonce au milieu du texte, seulement pour les articles assez longs.
-  const adAt = ads && blocks.length >= 8 ? Math.floor(blocks.length / 2) : -1;
+  const adPositions = ads && blocks.length >= 8 ? new Set([Math.floor(blocks.length / 3), Math.floor((blocks.length * 2) / 3)]) : new Set<number>();
   return (
     <View>
       {blocks.map((b, i) => (
         <View key={i}>
-          {i === adAt ? <AdSlot consent={consent} /> : null}
+          {adPositions.has(i) ? <AdSlot consent={consent} kind="vertical" /> : null}
           {"h" in b ? (
             <Text role="heading" aria-level={2} {...r("reveal")} style={{ fontFamily: font.display, fontSize: 32, lineHeight: 38, letterSpacing: -1, color: t.ink, marginTop: space(14) }}>{b.h}</Text>
           ) : "p" in b ? (
