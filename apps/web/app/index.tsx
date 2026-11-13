@@ -9,6 +9,7 @@ import { PageHead } from "../src/components/ArticleView";
 import { CountUp } from "../src/components/CountUp";
 import { PriceTag } from "../src/components/PriceTag";
 import { Screen } from "../src/components/Screen";
+import { AdSlot } from "../src/components/AdSlot";
 import { Burst, Dots, HalfMoon, Squiggle } from "../src/components/Shapes";
 import { Button, Eyebrow, H2, IconBadge, Lead, Section } from "../src/components/ui";
 import { Wizard } from "../src/components/Wizard";
@@ -43,6 +44,7 @@ export default function Home() {
       <Stats t={t} />
       <View {...anchor("planificateur")}><PlannerSection t={t} /></View>
       <View {...anchor("comment")}><HowItWorks t={t} /></View>
+      <AdSlot consent={null} kind="vertical" />
       <BudgetPromise t={t} />
       <CuisinesGrid t={t} />
       <GuidesTeaser t={t} />
