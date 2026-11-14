@@ -130,9 +130,9 @@ export default function Root({ children }: PropsWithChildren) {
     <html lang="fr-CA">
       <head>
         <meta charSet="utf-8" />
-        {/* Google Analytics / Google tag fourni pour MonGusto */}
-        <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-NLD5HTS6" />
-        <script dangerouslySetInnerHTML={{ __html: "window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date());" }} />
+        {/* Google Analytics 4 : mesure des visites de MonGusto */}
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-2ED1L5ZDH2" />
+        <script dangerouslySetInnerHTML={{ __html: "window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-2ED1L5ZDH2');" }} />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <meta name="theme-color" content="#2B44FF" />
